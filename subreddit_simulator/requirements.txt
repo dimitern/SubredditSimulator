@@ -1,0 +1,12 @@
+certifi==2018.8.24
+chardet==3.0.4
+idna==2.7
+markovify==0.7.1
+praw==6.0.0
+prawcore==1.0.0
+pytz==2018.5
+requests==2.19.1
+SQLAlchemy==1.2.11
+Unidecode==1.0.22
+update-checker==0.16
+urllib3==1.23

@@ -44,3 +44,10 @@ max_corpus_size = 1000
 usernames_csv = bot_user1, bot_user2, bot_user3
 passwords_csv = xxxxxxxxx, yyyyyyyyy, zzzzzzzzz
 subreddits_csv = r/Bitcoin, r/Monet, r/Ripple
+
+# TopSubredditsParser configuration.
+[top_subreddits]
+# URL to use when fetching a list of top subreddits.
+url = https://www.crypto-roadmaps.com/single-post/2018/05/01/Top-100-SubReddits
+# Regular expression for subreddit names to match in the response.
+name_regexp = ^.*\b(r/[A-Za-z0-9_-]+)\b.*$
