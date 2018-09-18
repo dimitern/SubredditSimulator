@@ -1,4 +1,4 @@
-import HTMLParser
+import html.parser
 from datetime import datetime
 import random
 
@@ -16,13 +16,13 @@ from sqlalchemy import (
 )
 from sqlalchemy.sql.expression import func
 
-from database import Base, JSONSerialized, db
+from .database import Base, JSONSerialized, db
 
 MAX_OVERLAP_RATIO = 0.5
 MAX_OVERLAP_TOTAL = 10
 
 class SubredditSimulatorText(markovify.Text):
-    html_parser = HTMLParser.HTMLParser()
+    html_parser = html.parser.HTMLParser()
 
     def test_sentence_input(self, sentence):
         return True

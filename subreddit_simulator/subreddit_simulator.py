@@ -1,11 +1,11 @@
-import HTMLParser
+import html.parser
 from datetime import datetime, timedelta
 import pytz
 import random
 import re
 
-from database import db
-from models import Account, Settings, TopTodayAccount
+from .database import db
+from .models import Account, Settings, TopTodayAccount
 
 
 class Simulator(object):
@@ -16,7 +16,7 @@ class Simulator(object):
         self.mod_account = self.accounts["all"]
 
     def pick_account_to_comment(self):
-        accounts = [a for a in self.accounts.values() if a.can_comment]
+        accounts = [a for a in list(self.accounts.values()) if a.can_comment]
 
         # if any account hasn't commented yet, pick that one
         try:
@@ -32,7 +32,7 @@ class Simulator(object):
     def pick_account_to_submit(self):
         # make a submission based on today's /r/all every 6 hours
         try:
-            top_today_account = next(a for a in self.accounts.values()
+            top_today_account = next(a for a in list(self.accounts.values())
                 if isinstance(a, TopTodayAccount))
         except StopIteration:
             pass
@@ -41,7 +41,7 @@ class Simulator(object):
             if now - top_today_account.last_submitted > timedelta(hours=5.5):
                 return top_today_account
 
-        accounts = [a for a in self.accounts.values() if a.is_able_to_submit]
+        accounts = [a for a in list(self.accounts.values()) if a.is_able_to_submit]
 
         # if any account hasn't submitted yet, pick that one
         try:
@@ -75,7 +75,7 @@ class Simulator(object):
         subreddit = session.get_subreddit(self.subreddit)
 
         accounts = sorted(
-            [a for a in self.accounts.values() if a.can_comment],
+            [a for a in list(self.accounts.values()) if a.can_comment],
             key=lambda a: a.mean_comment_karma,
             reverse=True,
         )
@@ -93,7 +93,7 @@ class Simulator(object):
         start_delim = "[](/leaderboard-start)"
         end_delim = "[](/leaderboard-end)"
         current_sidebar = subreddit.get_settings()["description"]
-        current_sidebar = HTMLParser.HTMLParser().unescape(current_sidebar)
+        current_sidebar = html.parser.HTMLParser().unescape(current_sidebar)
         replace_pattern = re.compile(
             "{}.*?{}".format(re.escape(start_delim), re.escape(end_delim)),
             re.IGNORECASE|re.DOTALL|re.UNICODE,
@@ -114,18 +114,18 @@ class Simulator(object):
         subreddit.set_flair_csv(flair_map)
 
     def print_accounts_table(self):
-        accounts = sorted(self.accounts.values(), key=lambda a: a.added)
+        accounts = sorted(list(self.accounts.values()), key=lambda a: a.added)
         accounts = [a for a in accounts if not isinstance(a, TopTodayAccount)]
         
-        print "Subreddit|Added|Posts Comments?|Posts Submissions?"
-        print ":--|--:|:--|:--"
+        print("Subreddit|Added|Posts Comments?|Posts Submissions?")
+        print(":--|--:|:--|:--")
 
         checkmark = "&#10003;"
         for account in accounts:
-            print "[{}]({})|{}|{}|{}".format(
+            print("[{}]({})|{}|{}|{}".format(
                 account.subreddit,
                 "/u/" + account.name,
                 account.added.strftime("%Y-%m-%d"),
                 checkmark if account.can_comment else "",
                 checkmark if account.can_submit else "",
-            )
+            ))

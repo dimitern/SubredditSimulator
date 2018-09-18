@@ -1,1 +1,1 @@
-from subreddit_simulator import Simulator
+from .subreddit_simulator import Simulator

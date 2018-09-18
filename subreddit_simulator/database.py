@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-from ConfigParser import SafeConfigParser
+from configparser import SafeConfigParser
 
 from sqlalchemy import create_engine, Text, TypeDecorator
 from sqlalchemy.ext.declarative import declarative_base
