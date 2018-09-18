@@ -4,7 +4,6 @@ import sys
 from configparser import SafeConfigParser
 
 from sqlalchemy import Text, TypeDecorator, create_engine
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 
@@ -41,10 +40,14 @@ class JSONSerialized(TypeDecorator):
 cfg_file = SafeConfigParser()
 path_to_cfg = os.path.dirname(__file__)
 path_to_cfg = os.path.join(path_to_cfg, "subreddit_simulator.cfg")
-cfg_file.read(path_to_cfg)
+
+if not os.path.exists(path_to_cfg):
+    print(f"ERROR: No {path_to_cfg} found!")
+    sys.exit(1)
+
+cfg_file.read(path_to_cfg, encoding="utf-8")
 
 engine = create_engine(build_db_conn_string(cfg_file))
 
-Base = declarative_base()
 Session = sessionmaker(bind=engine)
 db = Session()

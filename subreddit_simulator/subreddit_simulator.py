@@ -5,15 +5,27 @@ from datetime import datetime, timedelta
 
 import pytz
 
+import praw
+
 from .database import db
-from .models import Account, Settings, TopTodayAccount
+from .models import Account, Settings
 
 
 class Simulator(object):
     def __init__(self):
-        self.accounts = {account.subreddit: account for account in db.query(Account)}
-        self.subreddit = Settings["subreddit"]
-        self.mod_account = self.accounts["all"]
+        self.accounts = {}
+        self.subreddit = Settings["subreddit"].lower()
+
+        if self.subreddit.startswith("r/"):
+            self.subreddit = self.subreddit[2:]
+
+        for account in db.query(Account):
+            subreddit = account.subreddit
+            if account.name == Settings["owner"]:
+                subreddit = self.subreddit
+            self.accounts[subreddit] = account
+
+        self.mod_account = self.accounts[self.subreddit]
 
     def pick_account_to_comment(self):
         accounts = [a for a in list(self.accounts.values()) if a.can_comment]
@@ -25,25 +37,13 @@ class Simulator(object):
             pass
 
         # pick an account from the 25% that commented longest ago
-        accounts = sorted(accounts, key=lambda a: a.last_commented)
-        num_to_keep = int(len(accounts) * 0.25)
-        return random.choice(accounts[:num_to_keep])
+        kept_accounts = sorted(accounts, key=lambda a: a.last_commented)
+        num_to_keep = int(len(kept_accounts) * 0.25)
+        if num_to_keep:
+            return random.choice(kept_accounts[:num_to_keep])
+        return random.choice(accounts)
 
     def pick_account_to_submit(self):
-        # make a submission based on today's /r/all every 6 hours
-        try:
-            top_today_account = next(
-                a
-                for a in list(self.accounts.values())
-                if isinstance(a, TopTodayAccount)
-            )
-        except StopIteration:
-            pass
-        else:
-            now = datetime.now(pytz.utc)
-            if now - top_today_account.last_submitted > timedelta(hours=5.5):
-                return top_today_account
-
         accounts = [a for a in list(self.accounts.values()) if a.is_able_to_submit]
 
         # if any account hasn't submitted yet, pick that one
@@ -53,29 +53,39 @@ class Simulator(object):
             pass
 
         # pick an account from the 25% that submitted longest ago
-        accounts = sorted(accounts, key=lambda a: a.last_submitted)
-        num_to_keep = int(len(accounts) * 0.25)
-        return random.choice(accounts[:num_to_keep])
+        kept_accounts = sorted(accounts, key=lambda a: a.last_submitted)
+        num_to_keep = int(len(kept_accounts) * 0.25)
+        if num_to_keep:
+            return random.choice(kept_accounts[:num_to_keep])
+
+        return random.choice(accounts)
 
     def make_comment(self):
         account = self.pick_account_to_comment()
+        if not account:
+            return False
         account.train_from_comments()
 
         # get the newest submission in the subreddit
-        subreddit = account.session.get_subreddit(self.subreddit)
-        for submission in subreddit.get_new(limit=5):
-            if submission.author.name != Settings["owner"]:
-                break
-        account.post_comment_on(submission)
+        subreddit = account.session.subreddit(self.subreddit)
+        for submission in subreddit.new(limit=5):
+            if submission.locked or submission.author.name == Settings["owner"]:
+                continue
+
+            return account.post_comment_on(submission)
+
+        return False
 
     def make_submission(self):
         account = self.pick_account_to_submit()
+        if not account:
+            return False
         account.train_from_submissions()
-        account.post_submission(self.subreddit)
+        return account.post_submission(self.subreddit)
 
     def update_leaderboard(self, limit=100):
         session = self.mod_account.session
-        subreddit = session.get_subreddit(self.subreddit)
+        subreddit = session.subreddit(self.subreddit)
 
         accounts = sorted(
             [a for a in list(self.accounts.values()) if a.can_comment],
@@ -93,7 +103,12 @@ class Simulator(object):
 
         start_delim = "[](/leaderboard-start)"
         end_delim = "[](/leaderboard-end)"
-        current_sidebar = subreddit.get_settings()["description"]
+        try:
+            current_sidebar = subreddit.mod.settings()["description"]
+        except praw.exceptions.PRAWException as err:
+            print(f"UPDATE ERROR: {err!s}")
+            return False
+
         current_sidebar = html.parser.HTMLParser().unescape(current_sidebar)
         replace_pattern = re.compile(
             "{}.*?{}".format(re.escape(start_delim), re.escape(end_delim)),
@@ -104,7 +119,7 @@ class Simulator(object):
             "{}\n\n{}\n\n{}".format(start_delim, leaderboard_md, end_delim),
             current_sidebar,
         )
-        subreddit.update_settings(description=new_sidebar)
+        subreddit.mod.update(description=new_sidebar)
 
         flair_map = [
             {
@@ -116,16 +131,21 @@ class Simulator(object):
             for rank, account in enumerate(accounts, start=1)
         ]
 
-        subreddit.set_flair_csv(flair_map)
+        try:
+            subreddit.flair.update(flair_map)
+        except praw.exceptions.PRAWException as err:
+            print(f"UPDATE ERROR: {err!s}")
+            return False
+
+        return True
 
     def print_accounts_table(self):
         accounts = sorted(list(self.accounts.values()), key=lambda a: a.added)
-        accounts = [a for a in accounts if not isinstance(a, TopTodayAccount)]
 
-        print("Subreddit|Added|Posts Comments?|Posts Submissions?")
+        print("\nSubreddit|Added|Posts Comments?|Posts Submissions?")
         print(":--|--:|:--|:--")
 
-        checkmark = "&#10003;"
+        checkmark = html.unescape("&#10003;")
         for account in accounts:
             print(
                 "[{}]({})|{}|{}|{}".format(

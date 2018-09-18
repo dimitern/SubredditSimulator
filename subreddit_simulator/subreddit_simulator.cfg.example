@@ -10,23 +10,20 @@ database = database_name
 username = database_username
 password = database_password
 
-# SubredditSimulator run-time configuration.
-[simulator]
+# SubredditSimulator settings.
+[settings]
 # Wait at least that many seconds before
 # posting a comment, submission, or updating
 # the leaderboards (by the moderator account).
 comment_delay_seconds = 300
 submission_delay_seconds = 1200
 leaderboard_update_delay_seconds = 3600
+main_loop_delay_seconds = 60
 
-# SubredditSimulator settings.
-[settings]
 # Subreddit where the bot accounts will post comments/submissions.
 subreddit = r/ProjectOblio
 # Moderator account for the subreddit above.
 owner = mod_account
-# Password of the moderator account.
-password = xxxxxxxx
 
 # OAuth2 script application authentication parameters.
 # See: https://praw.readthedocs.io/en/latest/getting_started/authentication.html#oauth
@@ -37,12 +34,24 @@ user_agent = linux:com.github.project-oblio:v1.0 (by /u/mod_account)
 # How many comments/submissions to use at the most for training.
 max_corpus_size = 1000
 
-# Reddit accounts to use for the bot.
+# Ignored users can be a comma-separated list of Reddit usernames.
+ignored_users =
+
+# Reddit accounts to use for the bot, along with their passwords,
+# and subreddits to use for training. All values are comma-separated
+# and any spaces are ignored.
+#
 # NOTE! Each of those account must be authorized as a "developer"
 #       for the script application (using "add developer")!
+#
+# IMPORTANT! Usernames and passwords must have the same number of
+#            entries, and subreddits must be at least as many as
+#            the users (more are OK and will be ignored)
 [accounts]
-usernames_csv = bot_user1, bot_user2, bot_user3
+usernames_csv = mod_account, bot_user2, bot_user3
 passwords_csv = xxxxxxxxx, yyyyyyyyy, zzzzzzzzz
+
+# Run "python subreddit_simulator/top_subreddits.py" to get those and more.
 subreddits_csv = r/Bitcoin, r/Monet, r/Ripple
 
 # TopSubredditsParser configuration.

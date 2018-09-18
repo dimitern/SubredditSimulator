@@ -1,39 +1,49 @@
-import html.parser
+import html
+import os
 import random
 from datetime import datetime
 
+import pytz
+
 import markovify
 import praw
-import pytz
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import func
 
-from .database import Base, JSONSerialized, db
+from .database import JSONSerialized, db, engine
 
 MAX_OVERLAP_RATIO = 0.5
 MAX_OVERLAP_TOTAL = 10
 
 
+Base = declarative_base()
+
+
+def flatten_tree(tree, nested_attr="replies", depth_first=False):
+    """Return a flattened version of the passed in tree.
+    :param nested_attr: The attribute name that contains the nested items.
+        Defaults to ``replies`` which is suitable for comments.
+    :param depth_first: When true, add to the list in a depth-first manner
+        rather than the default breadth-first manner.
+    """
+    stack = tree[:]
+    retval = []
+    while stack:
+        item = stack.pop(0)
+        nested = getattr(item, nested_attr, None)
+        if nested and depth_first:
+            stack.extend(nested)
+        elif nested:
+            stack[0:0] = nested
+        retval.append(item)
+    return retval
+
+
 class SubredditSimulatorText(markovify.Text):
-    html_parser = html.parser.HTMLParser()
-
-    def test_sentence_input(self, sentence):
-        return True
-
-    def _prepare_text(self, text):
-        text = self.html_parser.unescape(text)
-        text = text.strip()
-        if not text.endswith((".", "?", "!")):
-            text += "."
-
-        return text
-
-    def sentence_split(self, text):
-        # split everything up by newlines, prepare them, and join back together
-        lines = text.splitlines()
-        text = " ".join([self._prepare_text(line) for line in lines if line.strip()])
-
-        return markovify.split_into_sentences(text)
+    def __init__(self, input_text, state_size=2, **kwargs):
+        input_text = html.unescape(input_text)
+        super().__init__(input_text, state_size=state_size, **kwargs)
 
 
 class Setting(Base):
@@ -43,50 +53,55 @@ class Setting(Base):
     value = Column(JSONSerialized)
 
 
-Settings = {}
-for setting in db.query(Setting):
-    Settings[setting.name] = setting.value
-
-
 class Account(Base):
     __tablename__ = "accounts"
 
     name = Column(String(20), primary_key=True)
+    password = Column(String(50))
     subreddit = Column(String(21))
-    special_class = Column(String(50))
     added = Column(DateTime(timezone=True))
     can_submit = Column(Boolean, default=False)
-    link_karma = Column(Integer)
+    link_karma = Column(Integer, default=0)
     num_submissions = Column(Integer, default=0)
     last_submitted = Column(DateTime(timezone=True))
     can_comment = Column(Boolean, default=True)
-    comment_karma = Column(Integer)
+    comment_karma = Column(Integer, default=0)
     num_comments = Column(Integer, default=0)
     last_commented = Column(DateTime(timezone=True))
 
-    __mapper_args__ = {"polymorphic_on": special_class, "polymorphic_identity": None}
-
-    def __init__(self, name, subreddit, can_comment=True, can_submit=False):
+    def __init__(self, name, password, subreddit, can_comment=True, can_submit=True):
         self.name = name
+        self.password = password
         self.subreddit = subreddit.lower()
+        if self.subreddit.startswith("r/"):
+            self.subreddit = self.subreddit[2:]
+
         self.can_comment = can_comment
         self.can_submit = can_submit
-        self.added = datetime.now(pytz.utc)
+        if not self.added:
+            self.added = datetime.now(pytz.utc)
 
     @property
     def session(self):
         if not hasattr(self, "_session"):
-            self._session = praw.Reddit(Settings["user agent"])
-            self._session.login(self.name, Settings["password"], disable_warning=True)
-            self.comment_karma = self._session.user.comment_karma
-            self.link_karma = self._session.user.link_karma
+            self._session = praw.Reddit(
+                client_id=Settings["client_id"],
+                client_secret=Settings["client_secret"],
+                user_agent=Settings["user_agent"],
+                username=self.name,
+                password=self.password,
+            )
+
+            me = self._session.user.me()
+            self.link_karma = int(me.link_karma)
+            self.comment_karma = int(me.comment_karma)
 
         return self._session
 
     @property
     def is_able_to_submit(self):
-        captcha_exempt = self.comment_karma > 5 or self.link_karma > 2
-        return self.can_submit and captcha_exempt
+        # captcha_exempt = self.comment_karma > 5 or self.link_karma > 2
+        return self.can_submit
 
     @property
     def mean_comment_karma(self):
@@ -102,8 +117,8 @@ class Account(Base):
         else:
             return round(self.link_karma / float(self.num_submissions), 2)
 
-    def get_comments_from_site(self, limit=None, store_in_db=True):
-        subreddit = self.session.get_subreddit(self.subreddit)
+    def get_comments_from_site(self, limit=1000, store_in_db=True):
+        subreddit = self.session.subreddit(self.subreddit)
 
         # get the newest comment we've previously seen as a stopping point
         last_comment = (
@@ -116,7 +131,7 @@ class Account(Base):
         seen_ids = set()
         comments = []
 
-        for comment in subreddit.get_comments(limit=limit):
+        for comment in subreddit.comments(limit=limit):
             comment = Comment(comment)
 
             if last_comment:
@@ -136,8 +151,8 @@ class Account(Base):
             db.commit()
         return comments
 
-    def get_submissions_from_site(self, limit=None, store_in_db=True):
-        subreddit = self.session.get_subreddit(self.subreddit)
+    def get_submissions_from_site(self, limit=1000, store_in_db=True):
+        subreddit = self.session.subreddit(self.subreddit)
 
         # get the newest submission we've previously seen as a stopping point
         last_submission = (
@@ -150,9 +165,8 @@ class Account(Base):
         seen_ids = set()
         submissions = []
 
-        for submission in subreddit.get_new(limit=limit):
+        for submission in subreddit.new(limit=limit):
             submission = Submission(submission)
-
             if last_submission:
                 if (
                     submission.id == last_submission.id
@@ -174,7 +188,7 @@ class Account(Base):
         return submissions
 
     def should_include_comment(self, comment):
-        if comment.author in Settings["ignored users"]:
+        if comment.author in Settings["ignored_users"]:
             return False
 
         if "+/u/user_simulator" in comment.body.lower():
@@ -187,7 +201,7 @@ class Account(Base):
             db.query(Comment)
             .filter_by(subreddit=self.subreddit)
             .order_by(func.random())
-            .limit(Settings["max corpus size"])
+            .limit(Settings["max_corpus_size"])
         )
         valid_comments = [
             comment for comment in comments if self.should_include_comment(comment)
@@ -195,12 +209,19 @@ class Account(Base):
         return valid_comments
 
     def get_submissions_for_training(self, limit=None):
-        submissions = db.query(Submission).filter_by(subreddit=self.subreddit)
-        return [
+        submissions = (
+            db.query(Submission)
+            .filter_by(subreddit=self.subreddit)
+            .order_by(func.random())
+            .limit(Settings["max_corpus_size"])
+        )
+        valid_submissions = [
             submission
             for submission in submissions
-            if submission.author not in Settings["ignored users"]
+            if not submission.over_18
+            and submission.author not in Settings["ignored_users"]
         ]
+        return valid_submissions
 
     def train_from_comments(self, get_new_comments=True):
         if get_new_comments:
@@ -233,7 +254,7 @@ class Account(Base):
             if submission.url:
                 self.link_submissions.append(submission)
             else:
-                selftexts.append(submission.body or "")
+                selftexts.append(submission.body)
 
         self.link_submission_chance = len(self.link_submissions) / float(
             len(all_submissions)
@@ -308,17 +329,27 @@ class Account(Base):
 
         # decide if we're going to post top-level or reply
         if submission.num_comments == 0 or random.random() < 0.5:
-            submission.add_comment(comment)
+            try:
+                submission.reply(comment)
+            except praw.exceptions.PRAWException as err:
+                print(f"REPLY ERROR: {err!s}")
+                return False
+
         else:
-            comments = praw.helpers.flatten_tree(submission.comments)
+            comments = flatten_tree(submission.comments)
             reply_to = random.choice(comments)
-            reply_to.reply(comment)
+            try:
+                reply_to.reply(comment)
+            except praw.exceptions.PRAWException as err:
+                print(f"REPLY ERROR: {err!s}")
+                return False
 
         # update the database
         self.last_commented = datetime.now(pytz.utc)
         self.num_comments += 1
         db.add(self)
         db.commit()
+        return True
 
     def pick_submission_type(self):
         if not self.link_submissions:
@@ -330,7 +361,7 @@ class Account(Base):
             return "text"
 
     def post_submission(self, subreddit, type=None):
-        subreddit = self.session.get_subreddit(subreddit)
+        subreddit = self.session.subreddit(subreddit)
 
         title = self.title_model.make_short_sentence(
             300,
@@ -349,7 +380,12 @@ class Account(Base):
             if url_source.over_18:
                 title = "[NSFW] " + title
 
-            subreddit.submit(title, url=url_source.url, send_replies=False)
+            try:
+                subreddit.submit(title, url=url_source.url, send_replies=False)
+            except praw.exceptions.PRAWException as err:
+                print(f"SUBMIT ERROR: {err!s}")
+                return False
+
         else:
             selftext = ""
             while len(selftext) < self.avg_selftext_len:
@@ -363,28 +399,18 @@ class Account(Base):
             if len(selftext) == 0:
                 selftext = " "
 
-            subreddit.submit(title, text=selftext, send_replies=False)
+            try:
+                subreddit.submit(title, selftext=selftext, send_replies=False)
+            except praw.exceptions.PRAWException as err:
+                print(f"SUBMIT ERROR: {err!s}")
+                return False
 
         # update the database
         self.last_submitted = datetime.now(pytz.utc)
         self.num_submissions += 1
         db.add(self)
         db.commit()
-
-
-class TopTodayAccount(Account):
-    __mapper_args__ = {"polymorphic_identity": "TopToday"}
-
-    def get_submissions_for_training(self, limit=500):
-        subreddit = self.session.get_subreddit(self.subreddit)
-        submissions = [Submission(s) for s in subreddit.get_top_from_day(limit=limit)]
-        return [s for s in submissions if not s.over_18]
-
-    def train_from_submissions(self, get_new_submissions=False):
-        super(TopTodayAccount, self).train_from_submissions(get_new_submissions)
-
-    def pick_submission_type(self):
-        return "link"
+        return True
 
 
 class Comment(Base):
@@ -397,7 +423,7 @@ class Comment(Base):
     author = Column(String(20))
     body = Column(Text)
     score = Column(Integer)
-
+    permalink = Column(Text)
     __table_args__ = (Index("ix_comment_subreddit_date", "subreddit", "date"),)
 
     def __init__(self, comment):
@@ -411,6 +437,7 @@ class Comment(Base):
             self.author = "[deleted]"
         self.body = comment.body
         self.score = comment.score
+        self.permalink = f"https://www.reddit.com{comment.permalink}"
 
 
 class Submission(Base):
@@ -425,6 +452,7 @@ class Submission(Base):
     body = Column(Text)
     score = Column(Integer)
     over_18 = Column(Boolean)
+    permalink = Column(Text)
 
     __table_args__ = (Index("ix_submission_subreddit_date", "subreddit", "date"),)
 
@@ -445,3 +473,12 @@ class Submission(Base):
             self.url = submission.url
         self.score = submission.score
         self.over_18 = submission.over_18
+        self.permalink = f"https://www.reddit.com{submission.permalink}"
+
+
+if os.environ.get("SUBREDDIT_SIMULATOR_DROP_ALL", False):
+    Base.metadata.drop_all(engine)
+
+Base.metadata.create_all(engine)
+
+Settings = {}
