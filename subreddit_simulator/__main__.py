@@ -21,6 +21,7 @@ def configure_settings():
     items = defaultdict(str)
     items.setdefault("subreddit", "")
     items.setdefault("owner", "")
+    items.setdefault("moderator", "")
     items.setdefault("max_corpus_size", "1000")
     items.setdefault("client_id", "")
     items.setdefault("client_secret", "")
