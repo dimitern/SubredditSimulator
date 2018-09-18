@@ -13,6 +13,7 @@ from .database import Base, JSONSerialized, db
 MAX_OVERLAP_RATIO = 0.5
 MAX_OVERLAP_TOTAL = 10
 
+
 class SubredditSimulatorText(markovify.Text):
     html_parser = html.parser.HTMLParser()
 
@@ -30,8 +31,7 @@ class SubredditSimulatorText(markovify.Text):
     def sentence_split(self, text):
         # split everything up by newlines, prepare them, and join back together
         lines = text.splitlines()
-        text = " ".join([self._prepare_text(line)
-            for line in lines if line.strip()])
+        text = " ".join([self._prepare_text(line) for line in lines if line.strip()])
 
         return markovify.split_into_sentences(text)
 
@@ -64,10 +64,7 @@ class Account(Base):
     num_comments = Column(Integer, default=0)
     last_commented = Column(DateTime(timezone=True))
 
-    __mapper_args__ = {
-        "polymorphic_on": special_class,
-        "polymorphic_identity": None,
-    }
+    __mapper_args__ = {"polymorphic_on": special_class, "polymorphic_identity": None}
 
     def __init__(self, name, subreddit, can_comment=True, can_submit=False):
         self.name = name
@@ -80,8 +77,7 @@ class Account(Base):
     def session(self):
         if not hasattr(self, "_session"):
             self._session = praw.Reddit(Settings["user agent"])
-            self._session.login(
-                self.name, Settings["password"], disable_warning=True)
+            self._session.login(self.name, Settings["password"], disable_warning=True)
             self.comment_karma = self._session.user.comment_karma
             self.link_karma = self._session.user.link_karma
 
@@ -112,9 +108,9 @@ class Account(Base):
         # get the newest comment we've previously seen as a stopping point
         last_comment = (
             db.query(Comment)
-                .filter_by(subreddit=self.subreddit)
-                .order_by(Comment.date.desc())
-                .first()
+            .filter_by(subreddit=self.subreddit)
+            .order_by(Comment.date.desc())
+            .first()
         )
 
         seen_ids = set()
@@ -124,8 +120,7 @@ class Account(Base):
             comment = Comment(comment)
 
             if last_comment:
-                if (comment.id == last_comment.id or 
-                        comment.date <= last_comment.date):
+                if comment.id == last_comment.id or comment.date <= last_comment.date:
                     break
 
             # somehow there are occasionally duplicates - skip over them
@@ -147,9 +142,9 @@ class Account(Base):
         # get the newest submission we've previously seen as a stopping point
         last_submission = (
             db.query(Submission)
-                .filter_by(subreddit=self.subreddit)
-                .order_by(Submission.date.desc())
-                .first()
+            .filter_by(subreddit=self.subreddit)
+            .order_by(Submission.date.desc())
+            .first()
         )
 
         seen_ids = set()
@@ -159,8 +154,10 @@ class Account(Base):
             submission = Submission(submission)
 
             if last_submission:
-                if (submission.id == last_submission.id or 
-                        submission.date <= last_submission.date):
+                if (
+                    submission.id == last_submission.id
+                    or submission.date <= last_submission.date
+                ):
                     break
 
             # somehow there are occasionally duplicates - skip over them
@@ -186,19 +183,24 @@ class Account(Base):
         return True
 
     def get_comments_for_training(self, limit=None):
-        comments = (db.query(Comment)
+        comments = (
+            db.query(Comment)
             .filter_by(subreddit=self.subreddit)
             .order_by(func.random())
             .limit(Settings["max corpus size"])
         )
-        valid_comments = [comment for comment in comments
-            if self.should_include_comment(comment)]
+        valid_comments = [
+            comment for comment in comments if self.should_include_comment(comment)
+        ]
         return valid_comments
 
     def get_submissions_for_training(self, limit=None):
         submissions = db.query(Submission).filter_by(subreddit=self.subreddit)
-        return [submission for submission in submissions
-            if submission.author not in Settings["ignored users"]]
+        return [
+            submission
+            for submission in submissions
+            if submission.author not in Settings["ignored users"]
+        ]
 
     def train_from_comments(self, get_new_comments=True):
         if get_new_comments:
@@ -214,7 +216,8 @@ class Account(Base):
         else:
             state_size = 2
         self.comment_model = SubredditSimulatorText(
-            "\n".join(comments), state_size=state_size)
+            "\n".join(comments), state_size=state_size
+        )
 
     def train_from_submissions(self, get_new_submissions=True):
         if get_new_submissions:
@@ -232,11 +235,15 @@ class Account(Base):
             else:
                 selftexts.append(submission.body or "")
 
-        self.link_submission_chance = len(self.link_submissions) / float(len(all_submissions))
-        
+        self.link_submission_chance = len(self.link_submissions) / float(
+            len(all_submissions)
+        )
+
         self.title_model = SubredditSimulatorText("\n".join(titles), state_size=2)
         if selftexts:
-            self.avg_selftext_len = sum(len(s) for s in selftexts) / float(len(selftexts))
+            self.avg_selftext_len = sum(len(s) for s in selftexts) / float(
+                len(selftexts)
+            )
             self.avg_selftext_len = min(250, self.avg_selftext_len)
             # if the average selftext length is very low, we won't even bother
             # creating a model, and will submit with only titles
@@ -249,15 +256,18 @@ class Account(Base):
                     state_size = 2
                 try:
                     self.selftext_model = SubredditSimulatorText(
-                        "\n".join(selftexts), state_size=state_size)
+                        "\n".join(selftexts), state_size=state_size
+                    )
                 except IndexError:
                     # I'm not sure what causes this yet
                     self.selftext_model = None
 
     def make_comment_sentence(self):
-        return self.comment_model.make_sentence(tries=10000,
+        return self.comment_model.make_sentence(
+            tries=10000,
             max_overlap_total=MAX_OVERLAP_TOTAL,
-            max_overlap_ratio=MAX_OVERLAP_RATIO)
+            max_overlap_ratio=MAX_OVERLAP_RATIO,
+        )
 
     def build_comment(self):
         comment = ""
@@ -280,14 +290,16 @@ class Account(Base):
             comment += " " + new_sentence
 
         comment = comment.strip()
-        
+
         return comment
 
     def make_selftext_sentence(self):
         if self.selftext_model:
-            return self.selftext_model.make_sentence(tries=10000,
+            return self.selftext_model.make_sentence(
+                tries=10000,
                 max_overlap_total=MAX_OVERLAP_TOTAL,
-                max_overlap_ratio=MAX_OVERLAP_RATIO)
+                max_overlap_ratio=MAX_OVERLAP_RATIO,
+            )
         else:
             return None
 
@@ -295,8 +307,7 @@ class Account(Base):
         comment = self.build_comment()
 
         # decide if we're going to post top-level or reply
-        if (submission.num_comments == 0 or
-                random.random() < 0.5):
+        if submission.num_comments == 0 or random.random() < 0.5:
             submission.add_comment(comment)
         else:
             comments = praw.helpers.flatten_tree(submission.comments)
@@ -321,9 +332,12 @@ class Account(Base):
     def post_submission(self, subreddit, type=None):
         subreddit = self.session.get_subreddit(subreddit)
 
-        title = self.title_model.make_short_sentence(300, tries=10000,
-                max_overlap_total=MAX_OVERLAP_TOTAL,
-                max_overlap_ratio=MAX_OVERLAP_RATIO)
+        title = self.title_model.make_short_sentence(
+            300,
+            tries=10000,
+            max_overlap_total=MAX_OVERLAP_TOTAL,
+            max_overlap_ratio=MAX_OVERLAP_RATIO,
+        )
         title = title.rstrip(".")
 
         if not type:
@@ -359,14 +373,11 @@ class Account(Base):
 
 
 class TopTodayAccount(Account):
-    __mapper_args__ = {
-        "polymorphic_identity": "TopToday",
-    }
+    __mapper_args__ = {"polymorphic_identity": "TopToday"}
 
     def get_submissions_for_training(self, limit=500):
         subreddit = self.session.get_subreddit(self.subreddit)
-        submissions = [Submission(s)
-            for s in subreddit.get_top_from_day(limit=limit)]
+        submissions = [Submission(s) for s in subreddit.get_top_from_day(limit=limit)]
         return [s for s in submissions if not s.over_18]
 
     def train_from_submissions(self, get_new_submissions=False):
@@ -387,9 +398,7 @@ class Comment(Base):
     body = Column(Text)
     score = Column(Integer)
 
-    __table_args__ = (
-        Index("ix_comment_subreddit_date", "subreddit", "date"),
-    )
+    __table_args__ = (Index("ix_comment_subreddit_date", "subreddit", "date"),)
 
     def __init__(self, comment):
         self.id = comment.id
@@ -417,9 +426,7 @@ class Submission(Base):
     score = Column(Integer)
     over_18 = Column(Boolean)
 
-    __table_args__ = (
-        Index("ix_submission_subreddit_date", "subreddit", "date"),
-    )
+    __table_args__ = (Index("ix_submission_subreddit_date", "subreddit", "date"),)
 
     def __init__(self, submission):
         self.id = submission.id

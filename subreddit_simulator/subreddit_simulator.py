@@ -11,8 +11,7 @@ from .models import Account, Settings, TopTodayAccount
 
 class Simulator(object):
     def __init__(self):
-        self.accounts = {account.subreddit: account
-            for account in db.query(Account)}
+        self.accounts = {account.subreddit: account for account in db.query(Account)}
         self.subreddit = Settings["subreddit"]
         self.mod_account = self.accounts["all"]
 
@@ -33,8 +32,11 @@ class Simulator(object):
     def pick_account_to_submit(self):
         # make a submission based on today's /r/all every 6 hours
         try:
-            top_today_account = next(a for a in list(self.accounts.values())
-                if isinstance(a, TopTodayAccount))
+            top_today_account = next(
+                a
+                for a in list(self.accounts.values())
+                if isinstance(a, TopTodayAccount)
+            )
         except StopIteration:
             pass
         else:
@@ -84,9 +86,7 @@ class Simulator(object):
         leaderboard_md = "\\#|Account|Avg Karma\n--:|:--|--:"
         for rank, account in enumerate(accounts, start=1):
             leaderboard_md += "\n{}|/u/{}|{:.2f}".format(
-                rank,
-                account.name,
-                account.mean_comment_karma,
+                rank, account.name, account.mean_comment_karma
             )
             if rank >= limit:
                 break
@@ -97,7 +97,7 @@ class Simulator(object):
         current_sidebar = html.parser.HTMLParser().unescape(current_sidebar)
         replace_pattern = re.compile(
             "{}.*?{}".format(re.escape(start_delim), re.escape(end_delim)),
-            re.IGNORECASE|re.DOTALL|re.UNICODE,
+            re.IGNORECASE | re.DOTALL | re.UNICODE,
         )
         new_sidebar = re.sub(
             replace_pattern,
@@ -106,27 +106,33 @@ class Simulator(object):
         )
         subreddit.update_settings(description=new_sidebar)
 
-        flair_map = [{
-            "user": account.name,
-            "flair_text": "#{} / {} ({:.2f})".format(
-                rank, len(accounts), account.mean_comment_karma),
-            } for rank, account in enumerate(accounts, start=1)]
-            
+        flair_map = [
+            {
+                "user": account.name,
+                "flair_text": "#{} / {} ({:.2f})".format(
+                    rank, len(accounts), account.mean_comment_karma
+                ),
+            }
+            for rank, account in enumerate(accounts, start=1)
+        ]
+
         subreddit.set_flair_csv(flair_map)
 
     def print_accounts_table(self):
         accounts = sorted(list(self.accounts.values()), key=lambda a: a.added)
         accounts = [a for a in accounts if not isinstance(a, TopTodayAccount)]
-        
+
         print("Subreddit|Added|Posts Comments?|Posts Submissions?")
         print(":--|--:|:--|:--")
 
         checkmark = "&#10003;"
         for account in accounts:
-            print("[{}]({})|{}|{}|{}".format(
-                account.subreddit,
-                "/u/" + account.name,
-                account.added.strftime("%Y-%m-%d"),
-                checkmark if account.can_comment else "",
-                checkmark if account.can_submit else "",
-            ))
+            print(
+                "[{}]({})|{}|{}|{}".format(
+                    account.subreddit,
+                    "/u/" + account.name,
+                    account.added.strftime("%Y-%m-%d"),
+                    checkmark if account.can_comment else "",
+                    checkmark if account.can_submit else "",
+                )
+            )

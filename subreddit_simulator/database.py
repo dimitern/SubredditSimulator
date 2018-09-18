@@ -10,18 +10,22 @@ from sqlalchemy.orm import sessionmaker
 
 def build_db_conn_string(cfg):
     if cfg.get("database", "system").lower() == "sqlite":
-        return "{system}:///{db}".format(**{
-            "system": cfg.get("database", "system"),
-            "db": cfg.get("database", "database"),
-        })
+        return "{system}:///{db}".format(
+            **{
+                "system": cfg.get("database", "system"),
+                "db": cfg.get("database", "database"),
+            }
+        )
 
-    return "{system}://{username}:{password}@{host}/{db}".format(**{
-        "system": cfg.get("database", "system"),
-        "username": cfg.get("database", "username"),
-        "password": cfg.get("database", "password"),
-        "host": cfg.get("database", "host"),
-        "db": cfg.get("database", "database"),
-    })
+    return "{system}://{username}:{password}@{host}/{db}".format(
+        **{
+            "system": cfg.get("database", "system"),
+            "username": cfg.get("database", "username"),
+            "password": cfg.get("database", "password"),
+            "host": cfg.get("database", "host"),
+            "db": cfg.get("database", "database"),
+        }
+    )
 
 
 class JSONSerialized(TypeDecorator):
