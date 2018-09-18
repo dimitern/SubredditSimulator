@@ -3,9 +3,8 @@ import random
 import re
 from datetime import datetime, timedelta
 
-import pytz
-
 import praw
+import pytz
 
 from .database import db
 from .models import Account, Settings

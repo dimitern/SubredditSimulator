@@ -1,12 +1,13 @@
 import html
 import os
 import random
+import sys
 from datetime import datetime
-
-import pytz
 
 import markovify
 import praw
+import prawcore
+import pytz
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import func
@@ -84,6 +85,7 @@ class Account(Base):
     @property
     def session(self):
         if not hasattr(self, "_session"):
+            print(f"Logging in as {self.name!r} with {self.password!r}...")
             self._session = praw.Reddit(
                 client_id=Settings["client_id"],
                 client_secret=Settings["client_secret"],
@@ -92,9 +94,13 @@ class Account(Base):
                 password=self.password,
             )
 
-            me = self._session.user.me()
-            self.link_karma = int(me.link_karma)
-            self.comment_karma = int(me.comment_karma)
+            try:
+                me = self._session.user.me()
+                self.link_karma = int(me.link_karma)
+                self.comment_karma = int(me.comment_karma)
+            except prawcore.exceptions.OAuthException as err:
+                print(f"OAUTH ERROR: {err!s}")
+                sys.exit(2)
 
         return self._session
 
@@ -337,6 +343,8 @@ class Account(Base):
 
         else:
             comments = flatten_tree(submission.comments)
+            if not comments:
+                return False
             reply_to = random.choice(comments)
             try:
                 reply_to.reply(comment)
