@@ -1,19 +1,11 @@
 import html.parser
-from datetime import datetime
 import random
+from datetime import datetime
 
 import markovify
 import praw
 import pytz
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    Index,
-    Integer,
-    String,
-    Text,
-)
+from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.sql.expression import func
 
 from .database import Base, JSONSerialized, db

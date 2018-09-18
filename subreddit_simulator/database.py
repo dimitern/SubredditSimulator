@@ -3,7 +3,7 @@ import os
 import sys
 from configparser import SafeConfigParser
 
-from sqlalchemy import create_engine, Text, TypeDecorator
+from sqlalchemy import Text, TypeDecorator, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 

@@ -1,8 +1,9 @@
 import html.parser
-from datetime import datetime, timedelta
-import pytz
 import random
 import re
+from datetime import datetime, timedelta
+
+import pytz
 
 from .database import db
 from .models import Account, Settings, TopTodayAccount
