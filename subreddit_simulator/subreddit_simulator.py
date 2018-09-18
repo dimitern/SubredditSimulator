@@ -21,7 +21,7 @@ class Simulator(object):
 
         for account in db.query(Account):
             subreddit = account.subreddit
-            if account.name == Settings["owner"]:
+            if account.name == Settings["moderator"]:
                 subreddit = self.subreddit
             self.accounts[subreddit] = account
 
