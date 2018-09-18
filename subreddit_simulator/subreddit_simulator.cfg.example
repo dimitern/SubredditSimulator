@@ -22,14 +22,16 @@ main_loop_delay_seconds = 60
 
 # Subreddit where the bot accounts will post comments/submissions.
 subreddit = r/ProjectOblio
+# Owner account for the subreddit above (won't get replies).
+owner = owner_account
 # Moderator account for the subreddit above.
-owner = mod_account
+moderator = mod_account
 
 # OAuth2 script application authentication parameters.
 # See: https://praw.readthedocs.io/en/latest/getting_started/authentication.html#oauth
 client_id = yyyyyyyy
 client_secret = zzzzzzzzz
-user_agent = linux:com.github.project-oblio:v1.0 (by /u/mod_account)
+user_agent = linux:com.github.project-oblio:v1.0 (by /u/owner_account)
 
 # How many comments/submissions to use at the most for training.
 max_corpus_size = 1000
