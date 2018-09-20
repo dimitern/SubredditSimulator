@@ -294,7 +294,7 @@ class Account(Base):
             tries=10000,
             max_overlap_total=MAX_OVERLAP_TOTAL,
             max_overlap_ratio=MAX_OVERLAP_RATIO,
-        )
+        ) or ""
 
     def build_comment(self):
         comment = ""
