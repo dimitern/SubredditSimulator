@@ -98,6 +98,8 @@ class Account(Base):
                 me = self._session.user.me()
                 self.link_karma = int(me.link_karma)
                 self.comment_karma = int(me.comment_karma)
+                db.add(self)
+                db.commit()
             except prawcore.exceptions.OAuthException as err:
                 print(f"OAUTH ERROR: {err!s}")
                 sys.exit(2)
