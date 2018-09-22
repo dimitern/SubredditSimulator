@@ -19,6 +19,15 @@ if os.environ.get("SUBREDDIT_SIMULATOR_PRAWCORE_LOGGING", False):
 def configure_settings():
 
     items = defaultdict(str)
+    items.setdefault("comment_kind", "t1_")
+    items.setdefault("message_kind", "t4_")
+    items.setdefault("redditor_kind", "t2_")
+    items.setdefault("submission_kind", "t3_")
+    items.setdefault("subreddit_kind", "t5_")
+    items.setdefault("oauth_url", "https://oauth.reddit.com")
+    items.setdefault("reddit_url", "https://www.reddit.com")
+    items.setdefault("short_url", "https://redd.it")
+    items.setdefault("allow_self_signed_ssl_certs", "False")
     items.setdefault("subreddit", "")
     items.setdefault("owner", "")
     items.setdefault("moderator", "")
@@ -44,6 +53,9 @@ def configure_settings():
 
             elif key == "ignored_users":
                 value = [u.strip() for u in value.split(",") if u.strip()]
+
+            elif key == "allow_self_signed_ssl_certs":
+                value = True if value.lower() in ["true", "1", "on", "yes"] else False
 
             else:
                 try:

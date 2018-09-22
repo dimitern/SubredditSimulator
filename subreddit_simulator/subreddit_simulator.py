@@ -3,8 +3,9 @@ import random
 import re
 from datetime import datetime, timedelta
 
-import praw
 import pytz
+
+import praw
 
 from .database import db
 from .models import Account, Settings
@@ -37,7 +38,7 @@ class Simulator(object):
 
         # pick an account from the 25% that commented longest ago
         kept_accounts = sorted(accounts, key=lambda a: a.last_commented)
-        num_to_keep = int(len(kept_accounts) * 0.25)
+        num_to_keep = int(len(kept_accounts) * 0.5)
         if num_to_keep:
             return random.choice(kept_accounts[:num_to_keep])
         return random.choice(accounts)
@@ -53,25 +54,35 @@ class Simulator(object):
 
         # pick an account from the 25% that submitted longest ago
         kept_accounts = sorted(accounts, key=lambda a: a.last_submitted)
-        num_to_keep = int(len(kept_accounts) * 0.25)
+        num_to_keep = int(len(kept_accounts) * 0.5)
         if num_to_keep:
             return random.choice(kept_accounts[:num_to_keep])
 
         return random.choice(accounts)
 
+    def can_comment_on(self, submission):
+        return not submission.locked and not submission.author.name == Settings["owner"]
+
     def make_comment(self):
         account = self.pick_account_to_comment()
         if not account:
             return False
-        account.train_from_comments()
+
+        if not account.train_from_comments():
+            return False
 
         # get the newest submission in the subreddit
         subreddit = account.session.subreddit(self.subreddit)
-        for submission in subreddit.new(limit=5):
-            if submission.locked or submission.author.name == Settings["owner"]:
-                continue
+        submissions = subreddit.top("day", limit=25)
 
-            return account.post_comment_on(submission)
+        for submission in submissions:
+            if self.can_comment_on(submission):
+                return account.post_comment_on(submission)
+        else:
+            submissions = subreddit.top("all", limit=25)
+            for submission in submissions:
+                if self.can_comment_on(submission):
+                    return account.post_comment_on(submission)
 
         return False
 
@@ -79,7 +90,10 @@ class Simulator(object):
         account = self.pick_account_to_submit()
         if not account:
             return False
-        account.train_from_submissions()
+
+        if not account.train_from_submissions():
+            return False
+
         return account.post_submission(self.subreddit)
 
     def update_leaderboard(self, limit=100):
@@ -92,10 +106,17 @@ class Simulator(object):
             reverse=True,
         )
 
-        leaderboard_md = "\\#|Account|Avg Karma\n--:|:--|--:"
+        leaderboard_md = (
+            "\\#|Account|Avg Karma|\\#Com|\\#Sub|SR\n--:|:--|--:|--:|--:|:--"
+        )
         for rank, account in enumerate(accounts, start=1):
-            leaderboard_md += "\n{}|/u/{}|{:.2f}".format(
-                rank, account.name, account.mean_comment_karma
+            leaderboard_md += "\n{}|/u/{}|{:.2f}|{}|{}|/r/{}".format(
+                rank,
+                account.name,
+                account.mean_comment_karma,
+                account.num_comments,
+                account.num_submissions,
+                account.subreddit,
             )
             if rank >= limit:
                 break

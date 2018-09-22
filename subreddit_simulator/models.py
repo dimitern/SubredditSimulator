@@ -4,47 +4,59 @@ import random
 import sys
 from datetime import datetime
 
+import pytz
+import requests
+
 import markovify
 import praw
 import prawcore
-import pytz
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql.expression import func
 
 from .database import JSONSerialized, db, engine
 
-MAX_OVERLAP_RATIO = 0.5
-MAX_OVERLAP_TOTAL = 10
+MAX_OVERLAP_RATIO = 0.7
+MAX_OVERLAP_TOTAL = 20
 
 
 Base = declarative_base()
 
 
-def flatten_tree(tree, nested_attr="replies", depth_first=False):
-    """Return a flattened version of the passed in tree.
-    :param nested_attr: The attribute name that contains the nested items.
-        Defaults to ``replies`` which is suitable for comments.
-    :param depth_first: When true, add to the list in a depth-first manner
-        rather than the default breadth-first manner.
-    """
-    stack = tree[:]
-    retval = []
-    while stack:
-        item = stack.pop(0)
-        nested = getattr(item, nested_attr, None)
-        if nested and depth_first:
-            stack.extend(nested)
-        elif nested:
-            stack[0:0] = nested
-        retval.append(item)
-    return retval
-
-
 class SubredditSimulatorText(markovify.Text):
     def __init__(self, input_text, state_size=2, **kwargs):
         input_text = html.unescape(input_text)
-        super().__init__(input_text, state_size=state_size, **kwargs)
+        try:
+            super().__init__(input_text, state_size=state_size, **kwargs)
+        except KeyError as err:
+            if markovify.text.BEGIN in str(err):
+                raise ValueError(f"Ignoring bad input_text: {input_text!r}") from err
+
+    def test_sentence_output(self, *args, **kwargs):
+        r = super().test_sentence_output(*args, **kwargs)
+        return r if random.random() > 0.5 else random.choice((True, False))
+
+    @staticmethod
+    def prepare_sentance(sentence):
+        if not sentence or not sentence.strip():
+            return ""
+
+        sentence = " ".join(map(str.strip, sentence.strip().splitlines()))
+
+        if not sentence.endswith((".", "!", "?", ":", ";", "-", ",")):
+            sentence += random.choice((".", "!", "?"))
+
+        if sentence[0].upper() != sentence[0]:
+            sentence = sentence[0].upper() + sentence[1:]
+
+        return sentence
+
+    def sentence_join(self, sentences):
+        return " ".join(map(self.prepare_sentance, sentences))
+
+    def sentence_split(self, text):
+        text = " ".join(map(self.prepare_sentance, text.strip().splitlines()))
+        return markovify.split_into_sentences(text)
 
 
 class Setting(Base):
@@ -86,12 +98,30 @@ class Account(Base):
     def session(self):
         if not hasattr(self, "_session"):
             print(f"Logging in as {self.name!r} with {self.password!r}...")
+
+            requestor_kwargs = None
+            if Settings["allow_self_signed_ssl_certs"]:
+                print(f"Allowing self-signed SSL certs")
+                requests.packages.urllib3.disable_warnings()
+                unverified_session = requests.Session()
+                unverified_session.verify = False
+                requestor_kwargs = {"session": unverified_session}
+
             self._session = praw.Reddit(
                 client_id=Settings["client_id"],
                 client_secret=Settings["client_secret"],
                 user_agent=Settings["user_agent"],
                 username=self.name,
                 password=self.password,
+                reddit_url=Settings["reddit_url"],
+                oauth_url=Settings["oauth_url"],
+                short_url=Settings["short_url"],
+                comment_kind=Settings["comment_kind"],
+                message_kind=Settings["message_kind"],
+                redditor_kind=Settings["redditor_kind"],
+                submission_kind=Settings["submission_kind"],
+                subreddit_kind=Settings["subreddit_kind"],
+                requestor_kwargs=requestor_kwargs,
             )
 
             try:
@@ -104,11 +134,19 @@ class Account(Base):
                 print(f"OAUTH ERROR: {err!s}")
                 sys.exit(2)
 
+        limits = self._session.auth.limits
+        reset = (
+            datetime.utcfromtimestamp(limits.get("reset_timestamp", 0))
+            - datetime.utcnow()
+        )
+        used, remaining = limits.get("used", "?"), limits.get("remaining", "?")
+        print(
+            f"API LIMITS for {self.name!r}: used={used}, remaining={remaining}, reset_after={reset}"
+        )
         return self._session
 
     @property
     def is_able_to_submit(self):
-        # captcha_exempt = self.comment_karma > 5 or self.link_karma > 2
         return self.can_submit
 
     @property
@@ -125,7 +163,7 @@ class Account(Base):
         else:
             return round(self.link_karma / float(self.num_submissions), 2)
 
-    def get_comments_from_site(self, limit=1000, store_in_db=True):
+    def get_comments_from_site(self, limit=100, store_in_db=True):
         subreddit = self.session.subreddit(self.subreddit)
 
         # get the newest comment we've previously seen as a stopping point
@@ -139,11 +177,13 @@ class Account(Base):
         seen_ids = set()
         comments = []
 
-        for comment in subreddit.comments(limit=limit):
+        for comment in subreddit.stream.comments():
             comment = Comment(comment)
 
             if last_comment:
-                if comment.id == last_comment.id or comment.date <= last_comment.date:
+                if (
+                    comment.id == last_comment.id or comment.date <= last_comment.date
+                ) and comment.id not in seen_ids:
                     break
 
             # somehow there are occasionally duplicates - skip over them
@@ -155,11 +195,14 @@ class Account(Base):
             if store_in_db:
                 db.add(comment)
 
+            if limit and len(comments) >= limit:
+                break
+
         if store_in_db:
             db.commit()
         return comments
 
-    def get_submissions_from_site(self, limit=1000, store_in_db=True):
+    def get_submissions_from_site(self, limit=100, store_in_db=True, top_of="day"):
         subreddit = self.session.subreddit(self.subreddit)
 
         # get the newest submission we've previously seen as a stopping point
@@ -173,7 +216,7 @@ class Account(Base):
         seen_ids = set()
         submissions = []
 
-        for submission in subreddit.new(limit=limit):
+        for submission in subreddit.top(top_of, limit=limit):
             submission = Submission(submission)
             if last_submission:
                 if (
@@ -199,28 +242,26 @@ class Account(Base):
         if comment.author in Settings["ignored_users"]:
             return False
 
-        if "+/u/user_simulator" in comment.body.lower():
-            return False
-
         return True
 
     def get_comments_for_training(self, limit=None):
         comments = (
             db.query(Comment)
             .filter_by(subreddit=self.subreddit)
-            .order_by(func.random())
+            .order_by(Comment.score.desc())
             .limit(Settings["max_corpus_size"])
         )
         valid_comments = [
             comment for comment in comments if self.should_include_comment(comment)
         ]
+        random.shuffle(valid_comments)
         return valid_comments
 
     def get_submissions_for_training(self, limit=None):
         submissions = (
             db.query(Submission)
             .filter_by(subreddit=self.subreddit)
-            .order_by(func.random())
+            .order_by(Submission.score.desc())
             .limit(Settings["max_corpus_size"])
         )
         valid_submissions = [
@@ -229,6 +270,7 @@ class Account(Base):
             if not submission.over_18
             and submission.author not in Settings["ignored_users"]
         ]
+        random.shuffle(valid_submissions)
         return valid_submissions
 
     def train_from_comments(self, get_new_comments=True):
@@ -240,17 +282,26 @@ class Account(Base):
             comments.append(comment.body)
         self.avg_comment_len = sum(len(c) for c in comments) / float(len(comments))
         self.avg_comment_len = min(250, self.avg_comment_len)
+
         if self.avg_comment_len >= 140:
             state_size = 3
         else:
             state_size = 2
-        self.comment_model = SubredditSimulatorText(
-            "\n".join(comments), state_size=state_size
-        )
+
+        try:
+            self.comment_model = SubredditSimulatorText(
+                " ".join(comments), state_size=state_size
+            )
+        except (ValueError, IndexError):
+            self.comment_model = None
+            return False
+
+        return True
 
     def train_from_submissions(self, get_new_submissions=True):
         if get_new_submissions:
-            self.get_submissions_from_site()
+            if not self.get_submissions_from_site(top_of="day"):
+                self.get_submissions_from_site(top_of="all")
 
         titles = []
         selftexts = []
@@ -265,10 +316,15 @@ class Account(Base):
                 selftexts.append(submission.body)
 
         self.link_submission_chance = len(self.link_submissions) / float(
-            len(all_submissions)
+            len(all_submissions) or 0.001
         )
 
-        self.title_model = SubredditSimulatorText("\n".join(titles), state_size=2)
+        try:
+            self.title_model = SubredditSimulatorText(" ".join(titles), state_size=2)
+        except (ValueError, IndexError):
+            self.title_model = None
+            return False
+
         if selftexts:
             self.avg_selftext_len = sum(len(s) for s in selftexts) / float(
                 len(selftexts)
@@ -285,21 +341,27 @@ class Account(Base):
                     state_size = 2
                 try:
                     self.selftext_model = SubredditSimulatorText(
-                        "\n".join(selftexts), state_size=state_size
+                        " ".join(selftexts), state_size=state_size
                     )
-                except IndexError:
-                    # I'm not sure what causes this yet
+                except (ValueError, IndexError):
                     self.selftext_model = None
+                    return False
+
+        return True
 
     def make_comment_sentence(self):
-        return self.comment_model.make_sentence(
-            tries=10000,
-            max_overlap_total=MAX_OVERLAP_TOTAL,
-            max_overlap_ratio=MAX_OVERLAP_RATIO,
-        ) or ""
+        return (
+            self.comment_model.make_sentence(
+                tries=10000,
+                max_overlap_total=MAX_OVERLAP_TOTAL,
+                max_overlap_ratio=MAX_OVERLAP_RATIO,
+            )
+            if self.comment_model
+            else None
+        )
 
     def build_comment(self):
-        comment = ""
+        comment = []
         while True:
             # For each sentence, check how close to the average comment length
             # we are, then use the remaining percentage as the chance of
@@ -308,7 +370,7 @@ class Account(Base):
             # another sentence. We're also adding a fixed 10% on top of that
             # just to increase the length a little, and have some chance of
             # continuing once we're past the average.
-            portion_done = len(comment) / float(self.avg_comment_len)
+            portion_done = len("".join(comment)) / float(self.avg_comment_len)
             continue_chance = 1.0 - portion_done
             continue_chance = max(0, continue_chance)
             continue_chance += 0.1
@@ -316,21 +378,25 @@ class Account(Base):
                 break
 
             new_sentence = self.make_comment_sentence()
-            comment += " " + new_sentence
+            if not new_sentence:
+                continue
 
-        comment = comment.strip()
+            comment.append(new_sentence)
+
+        comment = self.comment_model.sentence_join(comment)
 
         return comment
 
     def make_selftext_sentence(self):
-        if self.selftext_model:
-            return self.selftext_model.make_sentence(
+        return (
+            self.selftext_model.make_sentence(
                 tries=10000,
                 max_overlap_total=MAX_OVERLAP_TOTAL,
                 max_overlap_ratio=MAX_OVERLAP_RATIO,
             )
-        else:
-            return None
+            if self.selftext_model
+            else None
+        )
 
     def post_comment_on(self, submission):
         comment = self.build_comment()
@@ -344,7 +410,8 @@ class Account(Base):
                 return False
 
         else:
-            comments = flatten_tree(submission.comments)
+            submission.comments.replace_more(limit=None)
+            comments = submission.comments.list()
             if not comments:
                 return False
             reply_to = random.choice(comments)
@@ -373,12 +440,19 @@ class Account(Base):
     def post_submission(self, subreddit, type=None):
         subreddit = self.session.subreddit(subreddit)
 
-        title = self.title_model.make_short_sentence(
-            300,
-            tries=10000,
-            max_overlap_total=MAX_OVERLAP_TOTAL,
-            max_overlap_ratio=MAX_OVERLAP_RATIO,
+        title = (
+            self.title_model.make_short_sentence(
+                140,
+                tries=10000,
+                max_overlap_total=MAX_OVERLAP_TOTAL,
+                max_overlap_ratio=MAX_OVERLAP_RATIO,
+            )
+            if self.title_model
+            else None
         )
+        if not title:
+            return False
+
         title = title.rstrip(".")
 
         if not type:
@@ -399,7 +473,9 @@ class Account(Base):
         else:
             selftext = ""
             while len(selftext) < self.avg_selftext_len:
-                new_sentence = self.make_selftext_sentence()
+                new_sentence = SubredditSimulatorText.prepare_sentance(
+                    self.make_selftext_sentence()
+                )
                 if not new_sentence:
                     break
                 selftext += " " + new_sentence
@@ -423,6 +499,20 @@ class Account(Base):
         return True
 
 
+def normalize_html_text(html_text):
+    if not html_text or not html_text.strip():
+        return ""
+
+    body = []
+    p = html.parser.HTMLParser()
+    p.handle_data = lambda d: SubredditSimulatorText.prepare_sentance(d)
+    p.feed(html.unescape(html_text))
+    p.close()
+
+    text = " ".join(map(str.strip, body))
+    return SubredditSimulatorText.prepare_sentance(text)
+
+
 class Comment(Base):
     __tablename__ = "comments"
 
@@ -440,14 +530,17 @@ class Comment(Base):
         self.id = comment.id
         self.subreddit = comment.subreddit.display_name.lower()
         self.date = datetime.utcfromtimestamp(comment.created_utc)
-        self.is_top_level = comment.parent_id.startswith("t3_")
+        self.is_top_level = comment.parent_id.startswith(
+            f"{Settings['submission_kind']}_"
+        )
         if comment.author:
             self.author = comment.author.name
         else:
             self.author = "[deleted]"
-        self.body = comment.body
-        self.score = comment.score
-        self.permalink = f"https://www.reddit.com{comment.permalink}"
+        self.body = normalize_html_text(comment.body_html)
+        self.score = comment.score or 0
+        permalink = getattr(comment, "permalink", "")
+        self.permalink = f"{Settings['reddit_url']}{permalink}"
 
 
 class Submission(Base):
@@ -476,14 +569,15 @@ class Submission(Base):
             self.author = "[deleted]"
         self.title = submission.title
         if submission.is_self:
-            self.body = submission.selftext
+            self.body = normalize_html_text(submission.selftext_html)
             self.url = None
         else:
             self.body = None
             self.url = submission.url
-        self.score = submission.score
+        self.score = submission.score or 0
         self.over_18 = submission.over_18
-        self.permalink = f"https://www.reddit.com{submission.permalink}"
+        permalink = getattr(submission, "permalink", "")
+        self.permalink = f"{Settings['reddit_url']}{permalink}"
 
 
 if os.environ.get("SUBREDDIT_SIMULATOR_DROP_ALL", False):

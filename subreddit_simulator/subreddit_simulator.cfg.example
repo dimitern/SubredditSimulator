@@ -39,6 +39,25 @@ max_corpus_size = 1000
 # Ignored users can be a comma-separated list of Reddit usernames.
 ignored_users =
 
+# The following settings shouldn't be changed unless using a
+# custom Reddit instance on a different domain.
+# See: https://praw.readthedocs.io/en/latest/getting_started/configuration/options.html
+# NOTE! There is a typo in the above docs: there should NOT be a "_" after the kind!
+# (e.g. "comment_kind = t1" is correct, "comment_kind = t1_" is NOT!
+comment_kind = t1
+message_kind = t4
+redditor_kind = t2
+submission_kind = t3
+subreddit_kind = t5
+oauth_url = https://oauth.reddit.com
+reddit_url = https://www.reddit.com
+short_url = https://redd.it
+
+# If the following is set to True, On, Yes, or 1 (case-insensitive),
+# the praw API requestor class will allow self-signed SSL
+# certificates. Only needed when using a custom Reddit instance!
+allow_self_signed_ssl_certs =
+
 # Reddit accounts to use for the bot, along with their passwords,
 # and subreddits to use for training. All values are comma-separated
 # and any spaces are ignored.
