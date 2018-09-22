@@ -112,28 +112,32 @@ print("\n".join(f"{s.name}: {s.value!r}" for s in db.query(Setting).all()))
 s = Simulator()
 s.print_accounts_table()
 now = time.time()
-last_comment = last_submission = last_update = now - 3600.0
+last_comment = last_submission = last_update = last_vote = now - 3600.0
 
 print("\nStarting main loop on {}".format(datetime.now().isoformat()))
 
 while True:
     if now - last_update >= Settings["leaderboard_update_delay_seconds"]:
-        print("Trying to update the leaderboard on r/{}...".format(s.subreddit))
+        print("\nTrying to update the leaderboard on r/{}...".format(s.subreddit))
         if s.update_leaderboard():
             last_update = time.time()
             print("Leaderboard updated on {}".format(datetime.now().isoformat()))
 
     if now - last_comment >= Settings["comment_delay_seconds"]:
-        print("Trying to make a comment on r/{}...".format(s.subreddit))
+        print("\nTrying to make a comment on r/{}...".format(s.subreddit))
         if s.make_comment():
             last_comment = time.time()
             print("Comment posted on {}".format(datetime.now().isoformat()))
 
     if now - last_submission >= Settings["submission_delay_seconds"]:
-        print("Trying to make a submission on r/{}...".format(s.subreddit))
+        print("\nTrying to make a submission on r/{}...".format(s.subreddit))
         if s.make_submission():
             last_submission = time.time()
             print("Submission posted on {}".format(datetime.now().isoformat()))
+
+    print("\nTrying to vote on a submission / comment in r/{}...".format(s.subreddit))
+    if s.make_vote():
+       print("Voted on {}".format(datetime.now().isoformat()))
 
     time.sleep(Settings["main_loop_delay_seconds"])
     now = time.time()
