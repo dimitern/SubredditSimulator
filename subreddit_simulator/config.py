@@ -174,12 +174,15 @@ class Config:
                 continue
             setattr(self, key, value)
 
-    def update_db(self, db: Session) -> None:
+    def update_db(self, db: Session, only: Optional[List[str]] = None) -> None:
         from subreddit_simulator import models
 
         settings = {s.name: s for s in db.query(models.Setting)}
         for name, value in attr.asdict(self).items():
             if name.endswith("_csv"):
+                continue
+
+            if only and name not in only:
                 continue
 
             if name.endswith("_regexp"):
@@ -191,6 +194,12 @@ class Config:
             if settings[name].value != value:
                 settings[name].value = value
                 db.add(settings[name])
+
+        if only and not set(
+            ["usernames_csv", "passwords_csv", "subreddits_csv"]
+        ).isdisjoint(set(only)):
+            db.commit()
+            return
 
         accounts = {a.name: a for a in db.query(models.Account)}
         for username, password, subreddit in zip(

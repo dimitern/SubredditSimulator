@@ -24,35 +24,47 @@ s = Simulator()
 s.print_accounts_table()
 
 print("\nStarting main loop on {}".format(datetime.now().isoformat()))
+try:
+    while True:
+        now = time.time()
 
-while True:
-    now = time.time()
+        if now - CONFIG.last_update >= CONFIG.leaderboard_update_delay_seconds:
+            print("\nTrying to update the leaderboard on r/{}...".format(s.subreddit))
 
-    if now - CONFIG.last_update >= CONFIG.leaderboard_update_delay_seconds:
-        print("\nTrying to update the leaderboard on r/{}...".format(s.subreddit))
-        if s.update_leaderboard():
             CONFIG.last_update = time.time()
-            print("Leaderboard updated on {}".format(datetime.now().isoformat()))
+            CONFIG.update_db(db, only=["last_update"])
 
-    if now - CONFIG.last_comment >= CONFIG.comment_delay_seconds:
-        print("\nTrying to make a comment on r/{}...".format(s.subreddit))
-        if s.make_comment():
+            if s.update_leaderboard():
+                print("Leaderboard updated on {}".format(datetime.now().isoformat()))
+
+        if now - CONFIG.last_comment >= CONFIG.comment_delay_seconds:
+            print("\nTrying to make a comment on r/{}...".format(s.subreddit))
+
             CONFIG.last_comment = time.time()
-            print("Comment posted on {}".format(datetime.now().isoformat()))
+            CONFIG.update_db(db, only=["last_comment"])
 
-    if now - CONFIG.last_submission >= CONFIG.submission_delay_seconds:
-        print("\nTrying to make a submission on r/{}...".format(s.subreddit))
-        if s.make_submission():
+            if s.make_comment():
+                print("Comment posted on {}".format(datetime.now().isoformat()))
+
+        if now - CONFIG.last_submission >= CONFIG.submission_delay_seconds:
+            print("\nTrying to make a submission on r/{}...".format(s.subreddit))
+
             CONFIG.last_submission = time.time()
-            print("Submission posted on {}".format(datetime.now().isoformat()))
+            CONFIG.update_db(db, only=["last_submission"])
 
-    if now - CONFIG.last_vote >= CONFIG.voting_delay_seconds:
-        print("\nTrying to vote on a submission / comment in r/{}...".format(s.subreddit))
-        if s.make_vote():
+            if s.make_submission():
+                print("Submission posted on {}".format(datetime.now().isoformat()))
+
+        if now - CONFIG.last_vote >= CONFIG.voting_delay_seconds:
+            print("\nTrying to vote on a submission / comment in r/{}...".format(s.subreddit))
+
             CONFIG.last_vote = time.time()
-            print("Voted on {}".format(datetime.now().isoformat()))
+            CONFIG.update_db(db, only=["last_vote"])
 
-    CONFIG.update_db(db)
-    time.sleep(CONFIG.main_loop_delay_seconds)
+            if s.make_vote():
+                print("Voted on {}".format(datetime.now().isoformat()))
 
-print("Stopped main loop on {}".format(datetime.now().isoformat()))
+        time.sleep(CONFIG.main_loop_delay_seconds)
+
+except KeyboardInterrupt:
+    print("Stopped main loop on {}".format(datetime.now().isoformat()))
