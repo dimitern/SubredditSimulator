@@ -13,12 +13,14 @@ password = database_password
 # SubredditSimulator settings.
 [settings]
 # Wait at least that many seconds before
-# posting a comment, submission, or updating
-# the leaderboards (by the moderator account).
+# posting a comment, submission, updating
+# the leaderboards (by the moderator account),
+# or voting.
 comment_delay_seconds = 600
 submission_delay_seconds = 1200
 leaderboard_update_delay_seconds = 1800
 main_loop_delay_seconds = 60
+voting_delay_seconds = 60
 
 # Subreddit where the bot accounts will post comments/submissions.
 subreddit = r/ProjectOblio

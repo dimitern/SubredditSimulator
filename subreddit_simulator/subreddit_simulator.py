@@ -1,28 +1,19 @@
 import html.parser
 import random
 import re
-import time
-from datetime import datetime, timedelta
-
-import pytz
 
 import praw
-
-from .database import db
-from .models import Account, Settings
+from subreddit_simulator.models import CONFIG, Account, db
 
 
 class Simulator(object):
     def __init__(self):
         self.accounts = {}
-        self.subreddit = Settings["subreddit"].lower()
-
-        if self.subreddit.startswith("r/"):
-            self.subreddit = self.subreddit[2:]
+        self.subreddit = CONFIG.subreddit
 
         for account in db.query(Account):
             subreddit = account.subreddit
-            if account.name == Settings["moderator"]:
+            if account.name == CONFIG.moderator:
                 subreddit = self.subreddit
             self.accounts[subreddit] = account
 
@@ -76,7 +67,7 @@ class Simulator(object):
             return None
 
     def can_comment_on(self, submission):
-        return not submission.locked and not submission.author.name == Settings["owner"]
+        return not submission.locked and not submission.author.name == CONFIG.owner
 
     def make_comment(self):
         account = self.pick_account_to_comment()

@@ -12,9 +12,7 @@ import praw
 import prawcore
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql.expression import func
-
-from .database import JSONSerialized, db, engine
+from subreddit_simulator.database import CONFIG, JSONSerialized, db, engine
 
 MAX_OVERLAP_RATIO = 0.7
 MAX_OVERLAP_TOTAL = 20
@@ -100,7 +98,7 @@ class Account(Base):
             print(f"Logging in as {self.name!r} with {self.password!r}...")
 
             requestor_kwargs = None
-            if Settings["allow_self_signed_ssl_certs"]:
+            if CONFIG.allow_self_signed_ssl_certs:
                 print(f"Allowing self-signed SSL certs")
                 requests.packages.urllib3.disable_warnings()
                 unverified_session = requests.Session()
@@ -108,19 +106,19 @@ class Account(Base):
                 requestor_kwargs = {"session": unverified_session}
 
             self._session = praw.Reddit(
-                client_id=Settings["client_id"],
-                client_secret=Settings["client_secret"],
-                user_agent=Settings["user_agent"],
+                client_id=CONFIG.client_id,
+                client_secret=CONFIG.client_secret,
+                user_agent=CONFIG.user_agent,
                 username=self.name,
                 password=self.password,
-                reddit_url=Settings["reddit_url"],
-                oauth_url=Settings["oauth_url"],
-                short_url=Settings["short_url"],
-                comment_kind=Settings["comment_kind"],
-                message_kind=Settings["message_kind"],
-                redditor_kind=Settings["redditor_kind"],
-                submission_kind=Settings["submission_kind"],
-                subreddit_kind=Settings["subreddit_kind"],
+                reddit_url=CONFIG.reddit_url,
+                oauth_url=CONFIG.oauth_url,
+                short_url=CONFIG.short_url,
+                comment_kind=CONFIG.comment_kind,
+                message_kind=CONFIG.message_kind,
+                redditor_kind=CONFIG.redditor_kind,
+                submission_kind=CONFIG.submission_kind,
+                subreddit_kind=CONFIG.subreddit_kind,
                 requestor_kwargs=requestor_kwargs,
             )
 
@@ -239,7 +237,7 @@ class Account(Base):
         return submissions
 
     def should_include_comment(self, comment):
-        if comment.author in Settings["ignored_users"]:
+        if comment.author in CONFIG.ignored_users:
             return False
 
         return True
@@ -249,7 +247,7 @@ class Account(Base):
             db.query(Comment)
             .filter_by(subreddit=self.subreddit)
             .order_by(Comment.score.desc())
-            .limit(Settings["max_corpus_size"])
+            .limit(CONFIG.max_corpus_size)
         )
         valid_comments = [
             comment for comment in comments if self.should_include_comment(comment)
@@ -262,13 +260,12 @@ class Account(Base):
             db.query(Submission)
             .filter_by(subreddit=self.subreddit)
             .order_by(Submission.score.desc())
-            .limit(Settings["max_corpus_size"])
+            .limit(CONFIG.max_corpus_size)
         )
         valid_submissions = [
             submission
             for submission in submissions
-            if not submission.over_18
-            and submission.author not in Settings["ignored_users"]
+            if not submission.over_18 and submission.author not in CONFIG.ignored_users
         ]
         random.shuffle(valid_submissions)
         return valid_submissions
@@ -530,9 +527,7 @@ class Comment(Base):
         self.id = comment.id
         self.subreddit = comment.subreddit.display_name.lower()
         self.date = datetime.utcfromtimestamp(comment.created_utc)
-        self.is_top_level = comment.parent_id.startswith(
-            f"{Settings['submission_kind']}_"
-        )
+        self.is_top_level = comment.parent_id.startswith(f"{CONFIG.submission_kind}_")
         if comment.author:
             self.author = comment.author.name
         else:
@@ -540,7 +535,7 @@ class Comment(Base):
         self.body = normalize_html_text(comment.body_html)
         self.score = comment.score or 0
         permalink = getattr(comment, "permalink", "")
-        self.permalink = f"{Settings['reddit_url']}{permalink}"
+        self.permalink = f"{CONFIG.reddit_url}{permalink}"
 
 
 class Submission(Base):
@@ -577,12 +572,11 @@ class Submission(Base):
         self.score = submission.score or 0
         self.over_18 = submission.over_18
         permalink = getattr(submission, "permalink", "")
-        self.permalink = f"{Settings['reddit_url']}{permalink}"
+        self.permalink = f"{CONFIG.reddit_url}{permalink}"
 
 
 if os.environ.get("SUBREDDIT_SIMULATOR_DROP_ALL", False):
     Base.metadata.drop_all(engine)
 
-Base.metadata.create_all(engine)
-
-Settings = {}
+if os.environ.get("SUBREDDIT_SIMULATOR_CREATE_ALL", True):
+    Base.metadata.create_all(engine)
