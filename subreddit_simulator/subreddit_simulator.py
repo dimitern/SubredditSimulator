@@ -3,6 +3,7 @@ import random
 import re
 
 import praw
+
 from subreddit_simulator.models import CONFIG, Account, db
 
 
@@ -217,17 +218,37 @@ class Simulator(object):
     def print_accounts_table(self):
         accounts = sorted(list(self.accounts.values()), key=lambda a: a.added)
 
-        print("\nSubreddit|Added|Posts Comments?|Posts Submissions?")
-        print(":--|--:|:--|:--")
+        columns = (
+            "Subreddit",
+            "Account",
+            "Added",
+            "C. Karma",
+            "L. Karma",
+            "#Comments",
+            "#Submissions",
+            "Can Comment?",
+            "Can Submit?",
+        )
+        formatting = "|{:<20}|{:<20}|{:<10}|{:>11}|{:>11}|{:>13}|{:>13}|{:^13}|{:^13}|"
+        header = f"{formatting.replace('<', '^').replace('>', '^')}".format(*columns)
+        separator = "-" * len(header)
+
+        print("", separator, header, separator, sep="\n")
 
         checkmark = html.unescape("&#10003;")
         for account in accounts:
             print(
-                "[{}]({})|{}|{}|{}".format(
-                    account.subreddit,
+                formatting.format(
+                    "/r/" + account.subreddit,
                     "/u/" + account.name,
                     account.added.strftime("%Y-%m-%d"),
+                    f"{account.comment_karma:.2f}",
+                    f"{account.link_karma:.2f}",
+                    account.num_comments,
+                    account.num_submissions,
                     checkmark if account.can_comment else "",
                     checkmark if account.can_submit else "",
                 )
             )
+
+        print(separator)

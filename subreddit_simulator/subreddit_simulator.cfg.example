@@ -16,6 +16,8 @@ password = database_password
 # posting a comment, submission, updating
 # the leaderboards (by the moderator account),
 # or voting.
+# NOTE: If any of those values are less than 0,
+# then the action won't be performed!
 comment_delay_seconds = 600
 submission_delay_seconds = 1200
 leaderboard_update_delay_seconds = 1800

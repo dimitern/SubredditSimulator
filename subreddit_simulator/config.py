@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Callable, List, Optional
 
 import attr
-
 from sqlalchemy.orm import Session
 
 BOOL_VALUES = {True: ("true", "on", "yes", "1"), False: ("", "false", "off", "no", "0")}

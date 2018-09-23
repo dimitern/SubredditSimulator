@@ -1,17 +1,17 @@
 import html
+import json
 import os
 import random
 import sys
 from datetime import datetime
 
-import pytz
-import requests
-
 import markovify
 import praw
-import prawcore
+import pytz
+import requests
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
+
 from subreddit_simulator.database import CONFIG, JSONSerialized, db, engine
 
 MAX_OVERLAP_RATIO = 0.7
@@ -127,6 +127,7 @@ class Account(Base):
                 self.link_karma = int(me.link_karma)
                 self.comment_karma = int(me.comment_karma)
                 db.add(self)
+                db.flush()
                 db.commit()
             except prawcore.exceptions.OAuthException as err:
                 print(f"OAUTH ERROR: {err!s}")
@@ -164,40 +165,26 @@ class Account(Base):
     def get_comments_from_site(self, limit=100, store_in_db=True):
         subreddit = self.session.subreddit(self.subreddit)
 
-        # get the newest comment we've previously seen as a stopping point
-        last_comment = (
-            db.query(Comment)
-            .filter_by(subreddit=self.subreddit)
-            .order_by(Comment.date.desc())
-            .first()
+        seen_ids = set(
+            c.id for c in db.query(Comment).filter_by(subreddit=self.subreddit)
         )
 
-        seen_ids = set()
         comments = []
 
-        for comment in subreddit.stream.comments():
+        for comment in subreddit.comments(limit=limit):
             comment = Comment(comment)
 
-            if last_comment:
-                if (
-                    comment.id == last_comment.id or comment.date <= last_comment.date
-                ) and comment.id not in seen_ids:
-                    break
+            if comment.id not in seen_ids:
+                seen_ids.add(comment.id)
+                comments.append(comment)
 
-            # somehow there are occasionally duplicates - skip over them
-            if comment.id in seen_ids:
-                continue
-            seen_ids.add(comment.id)
-
-            comments.append(comment)
-            if store_in_db:
+            if store_in_db and not db.query(Comment).filter_by(id=comment.id).first():
                 db.add(comment)
-
-            if limit and len(comments) >= limit:
-                break
+                db.flush()
 
         if store_in_db:
             db.commit()
+
         return comments
 
     def get_submissions_from_site(self, limit=100, store_in_db=True, top_of="day"):
@@ -246,7 +233,8 @@ class Account(Base):
         comments = (
             db.query(Comment)
             .filter_by(subreddit=self.subreddit)
-            .order_by(Comment.score.desc())
+            .filter(Comment.body != "")
+            .order_by(Comment.date.desc())
             .limit(CONFIG.max_corpus_size)
         )
         valid_comments = [
@@ -259,7 +247,7 @@ class Account(Base):
         submissions = (
             db.query(Submission)
             .filter_by(subreddit=self.subreddit)
-            .order_by(Submission.score.desc())
+            .order_by(Submission.date.desc())
             .limit(CONFIG.max_corpus_size)
         )
         valid_submissions = [
@@ -277,7 +265,10 @@ class Account(Base):
         comments = []
         for comment in self.get_comments_for_training():
             comments.append(comment.body)
-        self.avg_comment_len = sum(len(c) for c in comments) / float(len(comments))
+
+        self.avg_comment_len = sum(len(c) for c in comments) / float(
+            len(comments) or 0.001
+        )
         self.avg_comment_len = min(250, self.avg_comment_len)
 
         if self.avg_comment_len >= 140:
@@ -287,7 +278,7 @@ class Account(Base):
 
         try:
             self.comment_model = SubredditSimulatorText(
-                " ".join(comments), state_size=state_size
+                " ".join(comments).strip(), state_size=state_size
             )
         except (ValueError, IndexError):
             self.comment_model = None
@@ -297,15 +288,17 @@ class Account(Base):
 
     def train_from_submissions(self, get_new_submissions=True):
         if get_new_submissions:
-            if not self.get_submissions_from_site(top_of="day"):
-                self.get_submissions_from_site(top_of="all")
+            submissions = self.get_submissions_from_site(top_of="day")
+            if not submissions:
+                submissions = self.get_submissions_from_site(top_of="all")
+        else:
+            submissions = self.get_submissions_for_training()
 
         titles = []
         selftexts = []
         self.link_submissions = []
 
-        all_submissions = self.get_submissions_for_training()
-        for submission in all_submissions:
+        for submission in submissions:
             titles.append(submission.title)
             if submission.url:
                 self.link_submissions.append(submission)
@@ -313,7 +306,7 @@ class Account(Base):
                 selftexts.append(submission.body)
 
         self.link_submission_chance = len(self.link_submissions) / float(
-            len(all_submissions) or 0.001
+            len(submissions) or 0.001
         )
 
         try:
@@ -422,6 +415,7 @@ class Account(Base):
         self.last_commented = datetime.now(pytz.utc)
         self.num_comments += 1
         db.add(self)
+        db.flush()
         db.commit()
         return True
 
@@ -492,6 +486,7 @@ class Account(Base):
         self.last_submitted = datetime.now(pytz.utc)
         self.num_submissions += 1
         db.add(self)
+        db.flush()
         db.commit()
         return True
 
@@ -501,8 +496,12 @@ def normalize_html_text(html_text):
         return ""
 
     body = []
-    p = html.parser.HTMLParser()
-    p.handle_data = lambda d: SubredditSimulatorText.prepare_sentance(d)
+
+    class Parser(html.parser.HTMLParser):
+        def handle_data(self, data):
+            body.append(SubredditSimulatorText.prepare_sentance(data))
+
+    p = Parser()
     p.feed(html.unescape(html_text))
     p.close()
 
@@ -532,7 +531,7 @@ class Comment(Base):
             self.author = comment.author.name
         else:
             self.author = "[deleted]"
-        self.body = normalize_html_text(comment.body_html)
+        self.body = normalize_html_text(comment.body_html or comment.body)
         self.score = comment.score or 0
         permalink = getattr(comment, "permalink", "")
         self.permalink = f"{CONFIG.reddit_url}{permalink}"

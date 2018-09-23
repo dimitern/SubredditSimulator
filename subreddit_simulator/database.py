@@ -2,6 +2,7 @@ import json
 
 from sqlalchemy import Text, TypeDecorator, create_engine
 from sqlalchemy.orm import sessionmaker
+
 from subreddit_simulator.config import CONFIG
 
 
