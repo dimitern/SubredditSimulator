@@ -5,13 +5,13 @@ import random
 import sys
 from datetime import datetime
 
-import markovify
-import praw
 import pytz
 import requests
+
+import markovify
+import praw
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
-
 from subreddit_simulator.database import CONFIG, JSONSerialized, db, engine
 
 MAX_OVERLAP_RATIO = 0.7

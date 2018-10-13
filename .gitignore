@@ -1,3 +1,4 @@
 /.venv
 __pycache__/
 subreddit_simulator.cfg
+/SubredditSimulator.egg-info
