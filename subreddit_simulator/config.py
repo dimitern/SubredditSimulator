@@ -3,15 +3,22 @@ import sys
 from configparser import SafeConfigParser
 from operator import attrgetter
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import attr
 from sqlalchemy.orm import Session
 
-BOOL_VALUES = {True: ("true", "on", "yes", "1"), False: ("", "false", "off", "no", "0")}
+BOOL_VALUES: Dict[bool, Tuple[str, ...]] = {
+    True: ("true", "on", "yes", "1"),
+    False: ("", "false", "off", "no", "0"),
+}
 
 StringParser = Callable[[str], str]
 StringListParser = Callable[[str], List[str]]
+
+
+def str_lower(value: str) -> str:
+    return value.lower()
 
 
 def parse_bool(value: Any) -> bool:
@@ -51,13 +58,25 @@ def parse_csv(items_parser: StringParser) -> StringListParser:
     return inner
 
 
+def parse_users_csv(items: str) -> StringListParser:
+    return parse_csv(parse_user)
+
+
+def parse_str_csv(items: str) -> StringListParser:
+    return parse_csv(str)
+
+
+def parse_subreddit_csv(items: str) -> StringListParser:
+    return parse_csv(parse_subreddit)
+
+
 @attr.s
 class Config:
     # Database configuration.
-    system: str = attr.ib(default="sqlite", converter=str.lower)
+    system: str = attr.ib(default="sqlite", converter=str_lower)
     username: str = attr.ib(default="")
     password: str = attr.ib(default="", repr=False)
-    host: str = attr.ib(default="", converter=str.lower)
+    host: str = attr.ib(default="", converter=str_lower)
     port: int = attr.ib(default=0, converter=int)
     database: str = attr.ib(default="subreddit_simulator")
 
@@ -73,7 +92,7 @@ class Config:
 
     # Optional settings.
     max_corpus_size: int = attr.ib(default=1000, converter=int)
-    ignored_users: List[str] = attr.ib(factory=list, converter=parse_csv(parse_user))
+    ignored_users: List[str] = attr.ib(factory=list, converter=parse_users_csv)
 
     # Main loop configuration.
     comment_delay_seconds: int = attr.ib(default=600, converter=int)
@@ -82,46 +101,32 @@ class Config:
     main_loop_delay_seconds: int = attr.ib(default=60, converter=int)
     voting_delay_seconds: int = attr.ib(default=60, converter=int)
 
-    last_comment: float = attr.ib(default=0, converter=attr.converters.optional(float))
-    last_submission: float = attr.ib(
-        default=0, converter=attr.converters.optional(float)
-    )
-    last_update: float = attr.ib(default=0, converter=attr.converters.optional(float))
-    last_vote: float = attr.ib(default=0, converter=attr.converters.optional(float))
+    last_comment: float = attr.ib(default=0.0, converter=float)
+    last_submission: float = attr.ib(default=0.0, converter=float)
+    last_update: float = attr.ib(default=0.0, converter=float)
+    last_vote: float = attr.ib(default=0.0, converter=float)
 
     # Accounts configuration.
-    usernames_csv: List[str] = attr.ib(factory=list, converter=parse_csv(parse_user))
-    passwords_csv: List[str] = attr.ib(factory=list, converter=parse_csv(str))
-    subreddits_csv: List[str] = attr.ib(
-        factory=list, converter=parse_csv(parse_subreddit)
-    )
+    usernames_csv: List[str] = attr.ib(factory=list, converter=parse_users_csv)
+    passwords_csv: List[str] = attr.ib(factory=list, converter=parse_str_csv)
+    subreddits_csv: List[str] = attr.ib(factory=list, converter=parse_subreddit_csv)
 
     # Top subreddits configuration.
     url: str = attr.ib(default="")
     # Regular expression for subreddit names to match in the response.
-    name_regexp: re.Pattern = attr.ib(default="", converter=re.compile)
+    name_regexp: re.Pattern = attr.ib(default="", converter=re.compile)  # type: ignore
 
     # NOTE: The following config settings should not be changed,
     # unless using a custom Reddit instance, rather than reddit.com.
-    comment_kind: str = attr.ib(default="t1", converter=str.lower)
-    message_kind: str = attr.ib(default="t4", converter=str.lower)
-    redditor_kind: str = attr.ib(default="t2", converter=str.lower)
-    submission_kind: str = attr.ib(default="t3", converter=str.lower)
-    subreddit_kind: str = attr.ib(default="t5", converter=str.lower)
+    comment_kind: str = attr.ib(default="t1", converter=str_lower)
+    message_kind: str = attr.ib(default="t4", converter=str_lower)
+    redditor_kind: str = attr.ib(default="t2", converter=str_lower)
+    submission_kind: str = attr.ib(default="t3", converter=str_lower)
+    subreddit_kind: str = attr.ib(default="t5", converter=str_lower)
     oauth_url: str = attr.ib(default="https://oauth.reddit.com")
     reddit_url: str = attr.ib(default="https://www.reddit.com")
     short_url: str = attr.ib(default="https://redd.it")
     allow_self_signed_ssl_certs: bool = attr.ib(default=False, converter=parse_bool)
-
-    def __attrs_post_init__(self):
-        if not self.last_comment:
-            self.last_comment = 0
-        if not self.last_submission:
-            self.last_submission = 0
-        if not self.last_update:
-            self.last_update = 0
-        if not self.last_vote:
-            self.last_vote = 0
 
     @classmethod
     def from_file(cls, filename: str = "subreddit_simulator.cfg") -> "Config":
@@ -133,7 +138,9 @@ class Config:
         parser = SafeConfigParser()
         parser.read(path, encoding="utf-8")
 
-        config = dict.fromkeys(map(attrgetter("name"), attr.fields(cls)), None)
+        config: Dict[str, Any] = dict.fromkeys(
+            map(attrgetter("name"), attr.fields(cls)), ""
+        )
         sections = ("database", "settings", "accounts", "top_subreddits")
         for section in sections:
             if not parser.has_section(section):
@@ -150,7 +157,7 @@ class Config:
         from subreddit_simulator import models
 
         csvs = ("usernames_csv", "passwords_csv", "subreddits_csv", "ignored_users")
-        config = {}
+        config: Dict[str, Any] = {}
         for csv in csvs:
             config.setdefault(csv, [])
 
