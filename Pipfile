@@ -1,0 +1,23 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+attrs = "*"
+click = "*"
+colorama = "*"
+markovify = "*"
+praw = "*"
+"psycopg2-binary" = "*"
+requests = "*"
+SQLAlchemy = "*"
+pip = "<=18.0"
+
+[dev-packages]
+ipython = "*"
+"flake8" = "*"
+mypy = "*"
+
+[requires]
+python_version = "3.7"
