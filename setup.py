@@ -1,23 +1,28 @@
-from setuptools import find_packages, setup
+from setuptools import setup
 
-from pipenv.project import Project
-from pipenv.utils import convert_deps_to_pip
 from subreddit_simulator import __version__
-
-pfile = Project(chdir=False).parsed_pipfile
-requirements = convert_deps_to_pip(pfile["packages"], r=False)
 
 setup(
     name="SubredditSimulator",
     version=__version__,
     description="An automated bot-run subreddit using markov chains",
-    author="Chad Birch, Dimiter Naydenov",
+    author="Chad Birch",
     author_email="chad.birch@gmail.com",
+    maintainer="Dimiter Naydenov",
+    maintainer_email="dimiter.naydenov@gmail.com",
     platforms=["any"],
     license="MIT",
     url="https://github.com/dimitern/SubredditSimulator",
-    packages=find_packages(),
-    install_requires=requirements,
+    install_requires=[
+        "click",
+        "pipenv",
+        "colorama",
+        "praw",
+        "attrs",
+        "markovify",
+        "requests",
+        "SQLAlchemy",
+    ],
     py_modules=["subreddit_simulator"],
     entry_points="""
     [console_scripts]

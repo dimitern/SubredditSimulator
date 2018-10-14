@@ -18,6 +18,7 @@ pip = "<=18.0"
 ipython = "*"
 "flake8" = "*"
 mypy = "*"
+"e1839a8" = {editable = true, path = "."}
 
 [requires]
 python_version = "3.7"
