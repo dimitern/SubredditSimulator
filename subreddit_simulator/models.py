@@ -1,17 +1,17 @@
 import html
-import json
 import os
 import random
 import sys
 from datetime import datetime
 
-import pytz
-import requests
-
 import markovify
 import praw
+import prawcore
+import pytz
+import requests
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
+
 from subreddit_simulator.database import CONFIG, JSONSerialized, db, engine
 
 MAX_OVERLAP_RATIO = 0.7
@@ -57,14 +57,14 @@ class SubredditSimulatorText(markovify.Text):
         return markovify.split_into_sentences(text)
 
 
-class Setting(Base):
+class Setting(Base):  # type: ignore
     __tablename__ = "settings"
 
     name = Column(String(100), primary_key=True)
     value = Column(JSONSerialized)
 
 
-class Account(Base):
+class Account(Base):  # type: ignore
     __tablename__ = "accounts"
 
     name = Column(String(20), primary_key=True)
@@ -509,7 +509,7 @@ def normalize_html_text(html_text):
     return SubredditSimulatorText.prepare_sentance(text)
 
 
-class Comment(Base):
+class Comment(Base):  # type: ignore
     __tablename__ = "comments"
 
     id = Column(String(10), primary_key=True)
@@ -537,7 +537,7 @@ class Comment(Base):
         self.permalink = f"{CONFIG.reddit_url}{permalink}"
 
 
-class Submission(Base):
+class Submission(Base):  # type: ignore
     __tablename__ = "submissions"
 
     id = Column(String(10), primary_key=True)

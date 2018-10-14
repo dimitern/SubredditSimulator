@@ -7,7 +7,7 @@ import praw
 from subreddit_simulator.models import CONFIG, Account, db
 
 
-class Simulator(object):
+class Simulator:
     def __init__(self):
         self.accounts = {}
         self.subreddit = CONFIG.subreddit
