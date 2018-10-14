@@ -13,6 +13,7 @@ praw = "*"
 requests = "*"
 SQLAlchemy = "*"
 pip = "<=18.0"
+pytz = "*"
 
 [dev-packages]
 ipython = "*"

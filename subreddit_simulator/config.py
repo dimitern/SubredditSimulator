@@ -6,7 +6,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import attr
-from sqlalchemy.orm import Session
+
+DEFAULT_SUBREDDIT_SIMULATOR_CONFIG = "subreddit_simulator.cfg"
 
 BOOL_VALUES: Dict[bool, Tuple[str, ...]] = {
     True: ("true", "on", "yes", "1"),
@@ -19,6 +20,10 @@ StringListParser = Callable[[str], List[str]]
 
 def str_lower(value: str) -> str:
     return value.lower()
+
+
+def optional_float(value: str) -> float:
+    return 0 if not value else float(value)
 
 
 def parse_bool(value: Any) -> bool:
@@ -72,6 +77,9 @@ def parse_subreddit_csv(items: str) -> StringListParser:
 
 @attr.s
 class Config:
+    # CLI-related.
+    verbose: int = attr.ib(default=0, init=False, repr=False)
+
     # Database configuration.
     system: str = attr.ib(default="sqlite", converter=str_lower)
     username: str = attr.ib(default="")
@@ -101,10 +109,10 @@ class Config:
     main_loop_delay_seconds: int = attr.ib(default=60, converter=int)
     voting_delay_seconds: int = attr.ib(default=60, converter=int)
 
-    last_comment: float = attr.ib(default=0.0, converter=float)
-    last_submission: float = attr.ib(default=0.0, converter=float)
-    last_update: float = attr.ib(default=0.0, converter=float)
-    last_vote: float = attr.ib(default=0.0, converter=float)
+    last_comment: float = attr.ib(default=0.0, converter=optional_float)
+    last_submission: float = attr.ib(default=0.0, converter=optional_float)
+    last_update: float = attr.ib(default=0.0, converter=optional_float)
+    last_vote: float = attr.ib(default=0.0, converter=optional_float)
 
     # Accounts configuration.
     usernames_csv: List[str] = attr.ib(factory=list, converter=parse_users_csv)
@@ -129,8 +137,12 @@ class Config:
     allow_self_signed_ssl_certs: bool = attr.ib(default=False, converter=parse_bool)
 
     @classmethod
-    def from_file(cls, filename: str = "subreddit_simulator.cfg") -> "Config":
-        path = Path(__file__).with_name(filename)
+    def from_file(cls, filename: str = None) -> "Config":
+        if not filename:
+            path = Path(__file__).with_name(DEFAULT_SUBREDDIT_SIMULATOR_CONFIG)
+        else:
+            path = Path(filename)
+
         if not path.exists():
             print(f"ERROR: No {path!s} found!")
             sys.exit(1)
@@ -141,6 +153,7 @@ class Config:
         config: Dict[str, Any] = dict.fromkeys(
             map(attrgetter("name"), attr.fields(cls)), ""
         )
+
         sections = ("database", "settings", "accounts", "top_subreddits")
         for section in sections:
             if not parser.has_section(section):
@@ -150,10 +163,11 @@ class Config:
             for key, value in parser.items(section):
                 config[key] = value
 
+        config.pop("verbose")
         return cls(**config)
 
     @classmethod
-    def from_db(cls, db: Session) -> "Config":
+    def from_db(cls, db) -> "Config":
         from subreddit_simulator import models
 
         csvs = ("usernames_csv", "passwords_csv", "subreddits_csv", "ignored_users")
@@ -172,6 +186,7 @@ class Config:
         for csv in csvs:
             config[csv] = ", ".join(config[csv])
 
+        config.pop("verbose")
         return cls(**config)
 
     def merge(self, other: "Config", exclude: Optional[List[str]] = None) -> None:
@@ -180,7 +195,7 @@ class Config:
                 continue
             setattr(self, key, value)
 
-    def update_db(self, db: Session, only: Optional[List[str]] = None) -> None:
+    def update_db(self, db, only: Optional[List[str]] = None) -> None:
         from subreddit_simulator import models
 
         settings = {s.name: s for s in db.query(models.Setting)}
@@ -236,4 +251,4 @@ class Config:
         return prefix + auth + suffix
 
 
-CONFIG = Config.from_file("subreddit_simulator.cfg")
+CONFIG = Config()

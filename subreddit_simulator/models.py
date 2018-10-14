@@ -574,8 +574,8 @@ class Submission(Base):  # type: ignore
         self.permalink = f"{CONFIG.reddit_url}{permalink}"
 
 
-if os.environ.get("SUBREDDIT_SIMULATOR_DROP_ALL", False):
+if os.environ.get("SUBREDDIT_SIMULATOR_DROP_ALL", 0):
     Base.metadata.drop_all(engine)
 
-if os.environ.get("SUBREDDIT_SIMULATOR_CREATE_ALL", True):
+if os.environ.get("SUBREDDIT_SIMULATOR_CREATE_ALL", 0):
     Base.metadata.create_all(engine)
