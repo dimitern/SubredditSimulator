@@ -63,16 +63,16 @@ def parse_csv(items_parser: StringParser) -> StringListParser:
     return inner
 
 
-def parse_users_csv(items: str) -> StringListParser:
-    return parse_csv(parse_user)
+def parse_users_csv(items: str) -> List[str]:
+    return parse_csv(parse_user)(items)
 
 
-def parse_str_csv(items: str) -> StringListParser:
-    return parse_csv(str)
+def parse_str_csv(items: str) -> List[str]:
+    return parse_csv(str)(items)
 
 
-def parse_subreddit_csv(items: str) -> StringListParser:
-    return parse_csv(parse_subreddit)
+def parse_subreddit_csv(items: str) -> List[str]:
+    return parse_csv(parse_subreddit)(items)
 
 
 @attr.s
@@ -144,8 +144,7 @@ class Config:
             path = Path(filename)
 
         if not path.exists():
-            print(f"ERROR: No {path!s} found!")
-            sys.exit(1)
+            raise FileNotFoundError(str(path))
 
         parser = SafeConfigParser()
         parser.read(path, encoding="utf-8")
@@ -157,8 +156,7 @@ class Config:
         sections = ("database", "settings", "accounts", "top_subreddits")
         for section in sections:
             if not parser.has_section(section):
-                print(f"ERROR: No [{section}] in {path!s}!")
-                sys.exit(2)
+                raise KeyError(f"No [{section}] in {path!s}!")
 
             for key, value in parser.items(section):
                 config[key] = value
@@ -186,13 +184,21 @@ class Config:
         for csv in csvs:
             config[csv] = ", ".join(config[csv])
 
-        config.pop("verbose")
+        config.pop("verbose", None)
         return cls(**config)
 
-    def merge(self, other: "Config", exclude: Optional[List[str]] = None) -> None:
+    def merge(
+        self,
+        other: "Config",
+        exclude: Optional[List[str]] = None,
+        include: Optional[List[str]] = None,
+    ) -> None:
         for key, value in attr.asdict(other).items():
             if exclude and key in exclude:
                 continue
+            if include and key not in include:
+                continue
+
             setattr(self, key, value)
 
     def update_db(self, db, only: Optional[List[str]] = None) -> None:
@@ -227,7 +233,7 @@ class Config:
             self.usernames_csv, self.passwords_csv, self.subreddits_csv
         ):
             if username not in accounts:
-                accounts[username] = models.Account(username, None, None)
+                accounts[username] = models.Account(username, "", "")
 
             if (
                 accounts[username].password != password

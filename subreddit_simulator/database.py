@@ -17,5 +17,5 @@ class JSONSerialized(TypeDecorator):
 
 
 engine = create_engine(CONFIG.database_url)
-Session = sessionmaker(bind=engine)
+Session = sessionmaker()
 db = Session()

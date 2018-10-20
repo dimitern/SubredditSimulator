@@ -1,5 +1,4 @@
 import html
-import os
 import random
 import sys
 from datetime import datetime
@@ -12,7 +11,7 @@ import requests
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 
-from subreddit_simulator.database import CONFIG, JSONSerialized, db, engine
+from subreddit_simulator.database import CONFIG, JSONSerialized, db
 
 MAX_OVERLAP_RATIO = 0.7
 MAX_OVERLAP_TOTAL = 20
@@ -572,10 +571,3 @@ class Submission(Base):  # type: ignore
         self.over_18 = submission.over_18
         permalink = getattr(submission, "permalink", "")
         self.permalink = f"{CONFIG.reddit_url}{permalink}"
-
-
-if os.environ.get("SUBREDDIT_SIMULATOR_DROP_ALL", 0):
-    Base.metadata.drop_all(engine)
-
-if os.environ.get("SUBREDDIT_SIMULATOR_CREATE_ALL", 0):
-    Base.metadata.create_all(engine)
