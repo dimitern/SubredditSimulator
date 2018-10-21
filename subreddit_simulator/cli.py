@@ -129,7 +129,7 @@ def run_main_loop(config: Config, simulator: Simulator, verbose: int, output: IO
 
     except Exception as err:
         echo(
-            "\n$FG_RED${BOLD}ERROR:$NORMAL${err}\n",
+            "\n$FG_RED${BOLD}ERROR: $NORMAL${err}\n",
             err=repr(err),
             file=output,
             max_length=-1,
