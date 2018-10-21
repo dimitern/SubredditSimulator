@@ -4,18 +4,28 @@ import re
 
 import praw
 
-from subreddit_simulator.models import CONFIG, Account, db
+from subreddit_simulator.models import Account
 
 
 class Simulator:
-    def __init__(self):
+    def __init__(self, config=None, engine=None, output=None):
+        self.config = config
+        self.engine = engine
+        self.db = self.engine.create_session()
         self.accounts = {}
-        self.subreddit = CONFIG.subreddit
+        self.subreddit = self.config.subreddit
+        self.output = output
 
-        for account in db.query(Account):
+        for account in self.db.query(Account):
             subreddit = account.subreddit
-            if account.name == CONFIG.moderator:
+            if account.name == self.config.moderator:
                 subreddit = self.subreddit
+
+            account.output = self.output
+            account.config = self.config
+            account.engine = self.engine
+            account.db = self.db
+
             self.accounts[subreddit] = account
 
         self.mod_account = self.accounts[self.subreddit]
@@ -68,7 +78,7 @@ class Simulator:
             return None
 
     def can_comment_on(self, submission):
-        return not submission.locked and not submission.author.name == CONFIG.owner
+        return not submission.locked and not submission.author.name == self.config.owner
 
     def make_comment(self):
         account = self.pick_account_to_comment()

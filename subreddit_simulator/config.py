@@ -1,11 +1,12 @@
 import re
-import sys
 from configparser import SafeConfigParser
 from operator import attrgetter
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import attr
+
+from . import database, models
 
 DEFAULT_SUBREDDIT_SIMULATOR_CONFIG = "subreddit_simulator.cfg"
 
@@ -166,8 +167,6 @@ class Config:
 
     @classmethod
     def from_db(cls, db) -> "Config":
-        from subreddit_simulator import models
-
         csvs = ("usernames_csv", "passwords_csv", "subreddits_csv", "ignored_users")
         config: Dict[str, Any] = {}
         for csv in csvs:
@@ -201,10 +200,11 @@ class Config:
 
             setattr(self, key, value)
 
-    def update_db(self, db, only: Optional[List[str]] = None) -> None:
-        from subreddit_simulator import models
+    def update_db(self, db=None, only: Optional[List[str]] = None) -> None:
+        db = database.Engine.from_config(self)
+        session = db.create_session()
 
-        settings = {s.name: s for s in db.query(models.Setting)}
+        settings = {s.name: s for s in session.query(models.Setting)}
         for name, value in attr.asdict(self).items():
             if name.endswith("_csv"):
                 continue
@@ -220,20 +220,22 @@ class Config:
 
             if settings[name].value != value:
                 settings[name].value = value
-                db.add(settings[name])
+                session.add(settings[name])
 
         if only and not set(
             ["usernames_csv", "passwords_csv", "subreddits_csv"]
         ).isdisjoint(set(only)):
-            db.commit()
+            session.commit()
             return
 
-        accounts = {a.name: a for a in db.query(models.Account)}
+        accounts = {a.name: a for a in session.query(models.Account)}
         for username, password, subreddit in zip(
             self.usernames_csv, self.passwords_csv, self.subreddits_csv
         ):
             if username not in accounts:
-                accounts[username] = models.Account(username, "", "")
+                accounts[username] = models.Account(
+                    username, "", "", config=self, engine=db
+                )
 
             if (
                 accounts[username].password != password
@@ -241,20 +243,6 @@ class Config:
             ):
                 accounts[username].password = password
                 accounts[username].subreddit = subreddit
-                db.add(accounts[username])
+                session.add(accounts[username])
 
-        db.commit()
-
-    @property
-    def database_url(self):
-        prefix = f"{self.system}://"
-        auth = f"{self.username}:{self.password}@{self.host}:{self.port}"
-        suffix = f"/{self.database}"
-
-        if self.system == "sqlite":
-            return prefix + suffix
-
-        return prefix + auth + suffix
-
-
-CONFIG = Config()
+        session.commit()

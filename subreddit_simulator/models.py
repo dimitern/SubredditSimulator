@@ -3,6 +3,7 @@ import random
 import sys
 from datetime import datetime
 
+import click
 import markovify
 import praw
 import prawcore
@@ -11,7 +12,8 @@ import requests
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
 
-from subreddit_simulator.database import CONFIG, JSONSerialized, db
+from .database import JSONSerialized
+from .utils import echo
 
 MAX_OVERLAP_RATIO = 0.7
 MAX_OVERLAP_TOTAL = 20
@@ -79,7 +81,17 @@ class Account(Base):  # type: ignore
     num_comments = Column(Integer, default=0)
     last_commented = Column(DateTime(timezone=True))
 
-    def __init__(self, name, password, subreddit, can_comment=True, can_submit=True):
+    def __init__(
+        self,
+        name,
+        password,
+        subreddit,
+        can_comment=True,
+        can_submit=True,
+        config=None,
+        engine=None,
+        output=None,
+    ):
         self.name = name
         self.password = password
         self.subreddit = subreddit.lower()
@@ -91,33 +103,44 @@ class Account(Base):  # type: ignore
         if not self.added:
             self.added = datetime.now(pytz.utc)
 
+        self.config = config
+        self.db = engine.create_session()
+        self.output = output
+
     @property
     def session(self):
         if not hasattr(self, "_session"):
-            print(f"Logging in as {self.name!r} with {self.password!r}...")
+            echo(
+                "$FG_WHITE${DIM}Logging in as $FG_CYAN$BOLD${name}$NORMAL$FG_WHITE "
+                "with $FG_LIGHTBLACK${password}$FG_WHITE$DIM...",
+                name=self.name,
+                password=self.password,
+                file=self.output,
+                max_length=-1,
+            )
 
             requestor_kwargs = None
-            if CONFIG.allow_self_signed_ssl_certs:
-                print(f"Allowing self-signed SSL certs")
+            if self.config.allow_self_signed_ssl_certs:
+                echo("$FG_YELLOW${DIM}Allowing self-signed SSL certs")
                 requests.packages.urllib3.disable_warnings()
                 unverified_session = requests.Session()
                 unverified_session.verify = False
                 requestor_kwargs = {"session": unverified_session}
 
             self._session = praw.Reddit(
-                client_id=CONFIG.client_id,
-                client_secret=CONFIG.client_secret,
-                user_agent=CONFIG.user_agent,
+                client_id=self.config.client_id,
+                client_secret=self.config.client_secret,
+                user_agent=self.config.user_agent,
                 username=self.name,
                 password=self.password,
-                reddit_url=CONFIG.reddit_url,
-                oauth_url=CONFIG.oauth_url,
-                short_url=CONFIG.short_url,
-                comment_kind=CONFIG.comment_kind,
-                message_kind=CONFIG.message_kind,
-                redditor_kind=CONFIG.redditor_kind,
-                submission_kind=CONFIG.submission_kind,
-                subreddit_kind=CONFIG.subreddit_kind,
+                reddit_url=self.config.reddit_url,
+                oauth_url=self.config.oauth_url,
+                short_url=self.config.short_url,
+                comment_kind=self.config.comment_kind,
+                message_kind=self.config.message_kind,
+                redditor_kind=self.config.redditor_kind,
+                submission_kind=self.config.submission_kind,
+                subreddit_kind=self.config.subreddit_kind,
                 requestor_kwargs=requestor_kwargs,
             )
 
@@ -125,11 +148,16 @@ class Account(Base):  # type: ignore
                 me = self._session.user.me()
                 self.link_karma = int(me.link_karma)
                 self.comment_karma = int(me.comment_karma)
-                db.add(self)
-                db.flush()
-                db.commit()
+                self.db.add(self)
+                self.db.flush()
+                self.db.commit()
             except prawcore.exceptions.OAuthException as err:
-                print(f"OAUTH ERROR: {err!s}")
+                echo(
+                    "$BG_RED$FG_YELLOW${BOLD}OAUTH ERROR:${NORMAL} ${err}",
+                    err=str(err),
+                    file=self.output,
+                    max_length=-1,
+                )
                 sys.exit(2)
 
         limits = self._session.auth.limits
@@ -165,7 +193,7 @@ class Account(Base):  # type: ignore
         subreddit = self.session.subreddit(self.subreddit)
 
         seen_ids = set(
-            c.id for c in db.query(Comment).filter_by(subreddit=self.subreddit)
+            c.id for c in self.db.query(Comment).filter_by(subreddit=self.subreddit)
         )
 
         comments = []
@@ -177,12 +205,15 @@ class Account(Base):  # type: ignore
                 seen_ids.add(comment.id)
                 comments.append(comment)
 
-            if store_in_db and not db.query(Comment).filter_by(id=comment.id).first():
-                db.add(comment)
-                db.flush()
+            if (
+                store_in_db
+                and not self.db.query(Comment).filter_by(id=comment.id).first()
+            ):
+                self.db.add(comment)
+                self.db.flush()
 
         if store_in_db:
-            db.commit()
+            self.db.commit()
 
         return comments
 
@@ -191,7 +222,7 @@ class Account(Base):  # type: ignore
 
         # get the newest submission we've previously seen as a stopping point
         last_submission = (
-            db.query(Submission)
+            self.db.query(Submission)
             .filter_by(subreddit=self.subreddit)
             .order_by(Submission.date.desc())
             .first()
@@ -216,25 +247,25 @@ class Account(Base):  # type: ignore
 
             submissions.append(submission)
             if store_in_db:
-                db.add(submission)
+                self.db.add(submission)
 
         if store_in_db:
-            db.commit()
+            self.db.commit()
         return submissions
 
     def should_include_comment(self, comment):
-        if comment.author in CONFIG.ignored_users:
+        if comment.author in self.config.ignored_users:
             return False
 
         return True
 
     def get_comments_for_training(self, limit=None):
         comments = (
-            db.query(Comment)
+            self.db.query(Comment)
             .filter_by(subreddit=self.subreddit)
             .filter(Comment.body != "")
             .order_by(Comment.date.desc())
-            .limit(CONFIG.max_corpus_size)
+            .limit(self.config.max_corpus_size)
         )
         valid_comments = [
             comment for comment in comments if self.should_include_comment(comment)
@@ -244,15 +275,16 @@ class Account(Base):  # type: ignore
 
     def get_submissions_for_training(self, limit=None):
         submissions = (
-            db.query(Submission)
+            self.db.query(Submission)
             .filter_by(subreddit=self.subreddit)
             .order_by(Submission.date.desc())
-            .limit(CONFIG.max_corpus_size)
+            .limit(self.config.max_corpus_size)
         )
         valid_submissions = [
             submission
             for submission in submissions
-            if not submission.over_18 and submission.author not in CONFIG.ignored_users
+            if not submission.over_18
+            and submission.author not in self.config.ignored_users
         ]
         random.shuffle(valid_submissions)
         return valid_submissions
@@ -413,9 +445,9 @@ class Account(Base):  # type: ignore
         # update the database
         self.last_commented = datetime.now(pytz.utc)
         self.num_comments += 1
-        db.add(self)
-        db.flush()
-        db.commit()
+        self.db.add(self)
+        self.db.flush()
+        self.db.commit()
         return True
 
     def pick_submission_type(self):
@@ -484,9 +516,9 @@ class Account(Base):  # type: ignore
         # update the database
         self.last_submitted = datetime.now(pytz.utc)
         self.num_submissions += 1
-        db.add(self)
-        db.flush()
-        db.commit()
+        self.db.add(self)
+        self.db.flush()
+        self.db.commit()
         return True
 
 
@@ -525,7 +557,9 @@ class Comment(Base):  # type: ignore
         self.id = comment.id
         self.subreddit = comment.subreddit.display_name.lower()
         self.date = datetime.utcfromtimestamp(comment.created_utc)
-        self.is_top_level = comment.parent_id.startswith(f"{CONFIG.submission_kind}_")
+        self.is_top_level = comment.parent_id.startswith(
+            f"{self.config.submission_kind}_"
+        )
         if comment.author:
             self.author = comment.author.name
         else:
@@ -533,7 +567,7 @@ class Comment(Base):  # type: ignore
         self.body = normalize_html_text(comment.body_html or comment.body)
         self.score = comment.score or 0
         permalink = getattr(comment, "permalink", "")
-        self.permalink = f"{CONFIG.reddit_url}{permalink}"
+        self.permalink = f"{self.config.reddit_url}{permalink}"
 
 
 class Submission(Base):  # type: ignore
@@ -570,4 +604,4 @@ class Submission(Base):  # type: ignore
         self.score = submission.score or 0
         self.over_18 = submission.over_18
         permalink = getattr(submission, "permalink", "")
-        self.permalink = f"{CONFIG.reddit_url}{permalink}"
+        self.permalink = f"{self.config.reddit_url}{permalink}"
