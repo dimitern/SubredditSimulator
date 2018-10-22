@@ -38,6 +38,7 @@ def describe_command(
             prefix + "$success on $BOLD${time}",
             time=datetime.now().isoformat(),
             file=output,
+            success=success,
         )
         setattr(config, on_success_update, time.time())
         config.update_db(only=[on_success_update])

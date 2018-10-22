@@ -169,12 +169,12 @@ class Account(Base):  # type: ignore
             "${DIM}API LIMITS for $BOLD$FG_CYAN${name}$NORMAL$DIM: "
             "$FG_RED${BOLD}used$NORMAL=${used}$DIM, "
             "$FG_YELLOW${BOLD}remaining$NORMAL=$DIM${remaining}, "
-            "$FG_MAGENTA${BOLD}reset_after$NORMAL=$DIM${reset}",
+            "$FG_GREEN${BOLD}reset_after$NORMAL=$DIM${reset_after}",
             file=self.output,
             name=self.name,
             used=used,
             remaining=remaining,
-            reset=reset,
+            reset_after=reset,
             max_length=-1,
         )
         return self._session
@@ -207,7 +207,7 @@ class Account(Base):  # type: ignore
         comments = []
 
         for comment in subreddit.comments(limit=limit):
-            comment = Comment(comment)
+            comment = Comment(comment, config=self.config)
 
             if comment.id not in seen_ids:
                 seen_ids.add(comment.id)
@@ -240,7 +240,7 @@ class Account(Base):  # type: ignore
         submissions = []
 
         for submission in subreddit.top(top_of, limit=limit):
-            submission = Submission(submission)
+            submission = Submission(submission, config=self.config)
             if last_submission:
                 if (
                     submission.id == last_submission.id
@@ -581,8 +581,9 @@ class Comment(Base):  # type: ignore
     permalink = Column(Text)
     __table_args__ = (Index("ix_comment_subreddit_date", "subreddit", "date"),)
 
-    def __init__(self, comment):
+    def __init__(self, comment, *, config=None):
         self.id = comment.id
+        self.config = config
         self.subreddit = comment.subreddit.display_name.lower()
         self.date = datetime.utcfromtimestamp(comment.created_utc)
         self.is_top_level = comment.parent_id.startswith(
@@ -614,7 +615,7 @@ class Submission(Base):  # type: ignore
 
     __table_args__ = (Index("ix_submission_subreddit_date", "subreddit", "date"),)
 
-    def __init__(self, submission):
+    def __init__(self, submission, *, config=None):
         self.id = submission.id
         self.subreddit = submission.subreddit.display_name.lower()
         self.date = datetime.utcfromtimestamp(submission.created_utc)
@@ -631,5 +632,6 @@ class Submission(Base):  # type: ignore
             self.url = submission.url
         self.score = submission.score or 0
         self.over_18 = submission.over_18
+        self.config = config
         permalink = getattr(submission, "permalink", "")
         self.permalink = f"{self.config.reddit_url}{permalink}"

@@ -7,35 +7,45 @@ Summary of the changes I did:
 
  * Converted all sources to Python 3.7, and reformatted them using `black` and `isort`.
  * Upgraded all `requirements.text` to the latest versions, incl. `psycopg2-binary`, `praw`.
- * Added `__main__.py` to make the package usable and easier to install and run.
+ * Migrated to using `pipenv` for stable and easier to manager requirements.
+ * Added `cli.py` to make the package easier to install and use (run `subreddit_simulator --help`
+   for details).
  * Added `top_subreddits.py` to fetch lists of top crypto-currency subreddits.
  * Extended the `subreddit_simulator.cfg` to contain all the needed information.
- * Running with `SUBREDDIT_SIMULATOR_DROP_ALL=1` drops and re-creates the database schema.
- * Running with `SUBREDDIT_SIMULATOR_PRAWCORE_LOGGING=1` enables verbose logging of API hits.
+ * Running with `-CD` drops and re-creates the database schema, with `-S` shows database contents.
+ * Running with `-v` (up to `-vvv`) enables verbose logging of API hits.
  * Numerous fixes in the original code, lots of testing on a local instance of reddit and reddit.com
 
 ## Setting up
 
-Clone the source first, you'll need `Python 3.6` or later (with f-strings), a database (SQLite
+Clone the source first, you'll need `Python 3.7` or later (with f-strings), a database (SQLite
 should work, but haven't tested - PostgreSQL is preferred), a `subreddit_simulator.cfg` file
 (use the example provided; should be simple to customize), and `Linux` machine (only tested on
-`Ubuntu 14.04 LTS`, but should in theory work on other OSes).
+`Ubuntu 16.04 LTS`, but should in theory work on other OSes).
 
-Create & activate a virtual environment:
+Install Python 3.7 and `pipenv` (if not present):
+
 ```
-python3 -m venv .venv
-source .venv/bin/activate
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt update
+sudo apt install python3.7
+sudo python3.7 -mensurepip
+sudo python3.7 -mpip install --upgrade pip wheel setuptools pipenv
 ```
 
-Install the requirements:
+Create a virtual environment and install required packages:
 ```
-pip install -r requirements.txt
+python3.7 -mpipenv --python 3.7
+python3.7 -mpipenv shell
+pipenv install --dev
 ```
 
 Run (assuming everything is configured as needed, you should see info about the settings, accounts, etc.):
 ```
-python3 -m subreddit_simulator
+subreddit_simulator --help
 ```
+
+To run the main loop of the bot, use `subreddit_simulator -r`.
 
 The rest of this README is copied from the original project.
 
