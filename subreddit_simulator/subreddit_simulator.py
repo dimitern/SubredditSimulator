@@ -3,6 +3,8 @@ import random
 import re
 from datetime import datetime, timedelta
 
+import pytz
+
 import praw
 
 from .models import Account
@@ -33,14 +35,14 @@ class Simulator:
         self.mod_account = self.accounts[self.subreddit]
 
     def pick_account_to_comment(self):
-        now = datetime.utcnow()
+        now = datetime.now(pytz.utc)
         accounts = [
             a
             for a in list(self.accounts.values())
             if a.can_comment
             and (
                 not a.last_commented
-                or (now - a.last_commented > timedelta(seconds=120))
+                or (now - a.last_commented > timedelta(seconds=600))
             )
         ]
 
