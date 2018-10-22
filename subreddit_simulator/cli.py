@@ -3,7 +3,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Callable, Tuple
+from typing import IO, Callable, List, Tuple
 
 import click
 
@@ -183,7 +183,7 @@ def create_config_from_example(ctx, config_file: str, verbose: int, output: IO) 
     ctx.exit(0)
 
 
-def setup_logging(verbose: int, output: IO) -> None:
+def setup_logging(verbose: int, output: IO, debug_log: IO = None) -> None:
     level = logging.ERROR
     if verbose >= 3:
         level = logging.DEBUG
@@ -192,12 +192,40 @@ def setup_logging(verbose: int, output: IO) -> None:
     elif verbose >= 1:
         level = logging.WARNING
 
-    handler = ColorStreamHandler(output)
-    handler.setLevel(level)
-    logging.basicConfig(level=level, handlers=[handler])
-    logging.getLogger("sqlalchemy.engine").setLevel(level)
-    logging.getLogger("praw").setLevel(level)
-    logging.getLogger("prawcore").setLevel(level)
+    output_handler = ColorStreamHandler(output)
+    output_handler.setLevel(level)
+
+    logging.basicConfig(level=level, handlers=[output_handler])
+
+    if debug_log is not None:
+        debug_log_handler = logging.StreamHandler(debug_log)
+        debug_log_handler.setLevel(logging.DEBUG)
+        debug_log_handler.setFormatter(
+            logging.Formatter(
+                fmt=":".join(
+                    [
+                        "%(asctime)s",
+                        "%(levelname)s",
+                        "%(name)s",
+                        "%(filename)s",
+                        "%(lineno)d",
+                        "%(funcName)s",
+                        "%(message)s",
+                    ]
+                )
+            )
+        )
+
+        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger().addHandler(debug_log_handler)
+        logging.getLogger("sqlalchemy").addHandler(debug_log_handler)
+        logging.getLogger("praw").addHandler(debug_log_handler)
+        logging.getLogger("prawcore").addHandler(debug_log_handler)
+
+    else:
+        logging.getLogger("sqlalchemy.engine").setLevel(level)
+        logging.getLogger("praw").setLevel(level)
+        logging.getLogger("prawcore").setLevel(level)
 
 
 def load_config_file(config_file: str, verbose: int, output: IO) -> Config:
@@ -301,6 +329,14 @@ def show_database(engine: Engine, output: IO):
     required=False,
     help="Log all output to a specified file (default:- i.e. stdout).",
 )
+@click.option(
+    "--debug-log",
+    "-d",
+    type=click.File(mode="a"),
+    default=None,
+    required=False,
+    help="Debug log file to use  (default: no debug log file).",
+)
 @click.option("--show-db", "-S", is_flag=True, help="Show the database contents.")
 @click.option(
     "--verbose",
@@ -312,7 +348,16 @@ def show_database(engine: Engine, output: IO):
 )
 @click.pass_context
 def main(
-    ctx, run, create_db, drop_db, show_db, show_accounts, config_file, verbose, output
+    ctx,
+    run,
+    create_db,
+    drop_db,
+    show_db,
+    show_accounts,
+    config_file,
+    verbose,
+    output,
+    debug_log,
 ):
     """Subreddit simulator CLI."""
 
@@ -322,7 +367,7 @@ def main(
     if not Path(config_file).exists():
         create_config_from_example(ctx, config_file, verbose, output)
 
-    setup_logging(verbose, output)
+    setup_logging(verbose, output, debug_log)
 
     file_config = load_config_file(config_file, verbose, output)
 
