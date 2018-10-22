@@ -163,7 +163,7 @@ class Simulator:
 
         for candidate in account.session.info(candidates):
             try:
-                direction = 1 if random.random() < 0.9 else -1
+                direction = 1
                 echo(
                     f"Voting $BOLD {direction} $NORMAL on $FG_CYAN "
                     f"{candidate.fullname!r} $FG_RESET with "
