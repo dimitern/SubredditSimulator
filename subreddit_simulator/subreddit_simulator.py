@@ -42,7 +42,7 @@ class Simulator:
 
         # pick an account from the 25% that commented longest ago
         kept_accounts = sorted(accounts, key=lambda a: a.last_commented)
-        num_to_keep = int(len(kept_accounts) * 0.5)
+        num_to_keep = int(len(kept_accounts) * 0.25)
         if num_to_keep:
             return random.choice(kept_accounts[:num_to_keep])
         return random.choice(accounts)
@@ -58,7 +58,7 @@ class Simulator:
 
         # pick an account from the 25% that submitted longest ago
         kept_accounts = sorted(accounts, key=lambda a: a.last_submitted)
-        num_to_keep = int(len(kept_accounts) * 0.5)
+        num_to_keep = int(len(kept_accounts) * 0.25)
         if num_to_keep:
             return random.choice(kept_accounts[:num_to_keep])
 
@@ -70,11 +70,8 @@ class Simulator:
         ]
         random.shuffle(accounts)
 
-        # if any account hasn't commented yet, pick that one
         try:
-            return next(
-                a for a in accounts if (a.mean_comment_karma + a.mean_link_karma) > 2
-            )
+            return next(a for a in accounts if (a.comment_karma + a.link_karma) > 2)
         except StopIteration:
             return None
 
@@ -82,7 +79,7 @@ class Simulator:
         return (
             not submission.locked
             and not submission.author.name == self.config.owner
-            and 2 <= submission.num_comments <= random.randint(5, 15)
+            and 2 <= submission.num_comments <= random.randint(5, 25)
         )
 
     def make_comment(self):
