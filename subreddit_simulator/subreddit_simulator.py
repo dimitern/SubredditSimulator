@@ -94,7 +94,7 @@ class Simulator:
             return False
 
         subreddit = account.session.subreddit(self.subreddit)
-        submissions = subreddit.top("day", limit=25)
+        submissions = subreddit.hot(limit=50)
 
         for submission in submissions:
             if self.can_comment_on(submission):
@@ -125,7 +125,7 @@ class Simulator:
         max_candidates = 10
 
         subreddit = account.session.subreddit(self.subreddit)
-        submissions = subreddit.top("day", limit=25)
+        submissions = subreddit.hot(limit=25)
 
         candidates = []
         for submission in submissions:
@@ -136,7 +136,7 @@ class Simulator:
                 candidates.append(submission.fullname)
 
         else:
-            submissions = subreddit.hot(limit=25)
+            submissions = subreddit.new(limit=25)
             for submission in submissions:
                 if len(candidates) >= max_candidates // 2:
                     break
