@@ -1,6 +1,7 @@
 import html.parser
 import random
 import re
+from datetime import datetime, timedelta
 
 import praw
 
@@ -32,7 +33,16 @@ class Simulator:
         self.mod_account = self.accounts[self.subreddit]
 
     def pick_account_to_comment(self):
-        accounts = [a for a in list(self.accounts.values()) if a.can_comment]
+        now = datetime.utcnow()
+        accounts = [
+            a
+            for a in list(self.accounts.values())
+            if a.can_comment
+            and (
+                not a.last_commented
+                or (now - a.last_commented > timedelta(seconds=120))
+            )
+        ]
 
         # if any account hasn't commented yet, pick that one
         try:
