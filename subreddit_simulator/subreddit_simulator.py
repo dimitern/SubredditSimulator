@@ -82,7 +82,7 @@ class Simulator:
         return (
             not submission.locked
             and not submission.author.name == self.config.owner
-            and submission.num_comments < random.randint(5, 15)
+            and 2 <= submission.num_comments <= random.randint(5, 15)
         )
 
     def make_comment(self):
