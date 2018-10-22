@@ -3,13 +3,14 @@ import random
 import sys
 from datetime import datetime
 
-import markovify
-import praw
-import prawcore
 import pytz
 import requests
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
+
+import markovify
+import praw
+import prawcore
 
 from .database import JSONSerialized
 from .utils import echo
@@ -143,21 +144,21 @@ class Account(Base):  # type: ignore
                 requestor_kwargs=requestor_kwargs,
             )
 
-            try:
-                me = self._session.user.me()
-                self.link_karma = int(me.link_karma)
-                self.comment_karma = int(me.comment_karma)
-                self.db.add(self)
-                self.db.flush()
-                self.db.commit()
-            except prawcore.exceptions.OAuthException as err:
-                echo(
-                    "$BG_RED$FG_YELLOW${BOLD}OAUTH ERROR:${NORMAL} ${err}",
-                    err=str(err),
-                    file=self.output,
-                    max_length=-1,
-                )
-                sys.exit(2)
+        try:
+            me = self._session.user.me()
+            self.link_karma = int(me.link_karma)
+            self.comment_karma = int(me.comment_karma)
+            self.db.add(self)
+            self.db.flush()
+            self.db.commit()
+        except prawcore.exceptions.OAuthException as err:
+            echo(
+                "$BG_RED$FG_YELLOW${BOLD}OAUTH ERROR:${NORMAL} ${err}",
+                err=str(err),
+                file=self.output,
+                max_length=-1,
+            )
+            sys.exit(2)
 
         limits = self._session.auth.limits
         reset = (
