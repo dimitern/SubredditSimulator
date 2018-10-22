@@ -4,7 +4,8 @@ import re
 
 import praw
 
-from subreddit_simulator.models import Account
+from .models import Account
+from .utils import echo
 
 
 class Simulator:
@@ -150,14 +151,23 @@ class Simulator:
         for candidate in account.session.info(candidates):
             try:
                 direction = 1 if random.random() < 0.9 else -1
-                print(
-                    f"Voting {direction} on {candidate.fullname!r} with {account.name!r}..."
+                echo(
+                    f"Voting $BOLD {direction} $NORMAL on $FG_CYAN "
+                    f"{candidate.fullname!r} $FG_RESET with "
+                    f"$FG_MAGENTA {account.name!r} $FG_RESET...",
+                    file=self.output,
+                    max_length=-1,
                 )
 
                 candidate.upvote() if direction == 1 else candidate.downvote()
 
             except praw.exceptions.PRAWException as err:
-                print(f"UPDATE ERROR: {err!s}")
+                echo(
+                    "$BG_RED$FG_YELLOW${BOLD}UPDATE ERROR:${NORMAL} ${err}",
+                    err=str(err),
+                    file=self.output,
+                    max_length=-1,
+                )
                 return False
 
         return True
@@ -192,7 +202,12 @@ class Simulator:
         try:
             current_sidebar = subreddit.mod.settings()["description"]
         except praw.exceptions.PRAWException as err:
-            print(f"UPDATE ERROR: {err!s}")
+            echo(
+                "$BG_RED$FG_YELLOW${BOLD}UPDATE ERROR:${NORMAL} ${err}",
+                err=str(err),
+                file=self.output,
+                max_length=-1,
+            )
             return False
 
         current_sidebar = html.parser.HTMLParser().unescape(current_sidebar)
@@ -220,7 +235,12 @@ class Simulator:
         try:
             subreddit.flair.update(flair_map)
         except praw.exceptions.PRAWException as err:
-            print(f"UPDATE ERROR: {err!s}")
+            echo(
+                "$BG_RED$FG_YELLOW${BOLD}UPDATE ERROR:${NORMAL} ${err}",
+                err=str(err),
+                file=self.output,
+                max_length=-1,
+            )
             return False
 
         return True
@@ -243,7 +263,7 @@ class Simulator:
         header = f"{formatting.replace('<', '^').replace('>', '^')}".format(*columns)
         separator = "-" * len(header)
 
-        print("", separator, header, separator, sep="\n")
+        print("", separator, header, separator, sep="\n", file=self.output)
 
         checkmark = html.unescape("&#10003;")
         for account in accounts:
@@ -258,7 +278,8 @@ class Simulator:
                     account.num_submissions,
                     checkmark if account.can_comment else "",
                     checkmark if account.can_submit else "",
-                )
+                ),
+                file=self.output,
             )
 
-        print(separator)
+        print(separator, file=self.output)

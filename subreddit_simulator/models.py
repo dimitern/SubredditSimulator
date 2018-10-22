@@ -3,7 +3,6 @@ import random
 import sys
 from datetime import datetime
 
-import click
 import markovify
 import praw
 import prawcore
@@ -166,8 +165,17 @@ class Account(Base):  # type: ignore
             - datetime.utcnow()
         )
         used, remaining = limits.get("used", "?"), limits.get("remaining", "?")
-        print(
-            f"API LIMITS for {self.name!r}: used={used}, remaining={remaining}, reset_after={reset}"
+        echo(
+            "${DIM}API LIMITS for $BOLD$FG_CYAN${name}$NORMAL$DIM: "
+            "$FG_RED${BOLD}used$NORMAL=${used}$DIM, "
+            "$FG_YELLOW${BOLD}remaining$NORMAL=$DIM${remaining}, "
+            "$FG_MAGENTA${BOLD}reset_after$NORMAL=$DIM${reset}",
+            file=self.output,
+            name=self.name,
+            used=used,
+            remaining=remaining,
+            reset=reset,
+            max_length=-1,
         )
         return self._session
 
@@ -427,7 +435,12 @@ class Account(Base):  # type: ignore
             try:
                 submission.reply(comment)
             except praw.exceptions.PRAWException as err:
-                print(f"REPLY ERROR: {err!s}")
+                echo(
+                    "$BG_RED$FG_YELLOW${BOLD}REPLY ERROR:${NORMAL} ${err}",
+                    err=str(err),
+                    file=self.output,
+                    max_length=-1,
+                )
                 return False
 
         else:
@@ -439,7 +452,12 @@ class Account(Base):  # type: ignore
             try:
                 reply_to.reply(comment)
             except praw.exceptions.PRAWException as err:
-                print(f"REPLY ERROR: {err!s}")
+                echo(
+                    "$BG_RED$FG_YELLOW${BOLD}REPLY ERROR:${NORMAL} ${err}",
+                    err=str(err),
+                    file=self.output,
+                    max_length=-1,
+                )
                 return False
 
         # update the database
@@ -489,7 +507,12 @@ class Account(Base):  # type: ignore
             try:
                 subreddit.submit(title, url=url_source.url, send_replies=False)
             except praw.exceptions.PRAWException as err:
-                print(f"SUBMIT ERROR: {err!s}")
+                echo(
+                    "$BG_RED$FG_YELLOW${BOLD}SUBMIT ERROR:${NORMAL} ${err}",
+                    err=str(err),
+                    file=self.output,
+                    max_length=-1,
+                )
                 return False
 
         else:
@@ -510,7 +533,12 @@ class Account(Base):  # type: ignore
             try:
                 subreddit.submit(title, selftext=selftext, send_replies=False)
             except praw.exceptions.PRAWException as err:
-                print(f"SUBMIT ERROR: {err!s}")
+                echo(
+                    "$BG_RED$FG_YELLOW${BOLD}SUBMIT ERROR:${NORMAL} ${err}",
+                    err=str(err),
+                    file=self.output,
+                    max_length=-1,
+                )
                 return False
 
         # update the database
