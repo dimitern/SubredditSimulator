@@ -79,7 +79,11 @@ class Simulator:
             return None
 
     def can_comment_on(self, submission):
-        return not submission.locked and not submission.author.name == self.config.owner
+        return (
+            not submission.locked
+            and not submission.author.name == self.config.owner
+            and submission.num_comments < random.randint(5, 15)
+        )
 
     def make_comment(self):
         account = self.pick_account_to_comment()
