@@ -431,7 +431,7 @@ class Account(Base):  # type: ignore
         comment = self.build_comment()
 
         # decide if we're going to post top-level or reply
-        if submission.num_comments == 0 or random.random() < 0.5:
+        if submission.num_comments <= 0 or random.random() < 0.5:
             try:
                 submission.reply(comment)
             except praw.exceptions.PRAWException as err:

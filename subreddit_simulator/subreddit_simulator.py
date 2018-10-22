@@ -73,7 +73,7 @@ class Simulator:
         # if any account hasn't commented yet, pick that one
         try:
             return next(
-                a for a in accounts if (a.mean_comment_karma + a.mean_link_karma) > 0
+                a for a in accounts if (a.mean_comment_karma + a.mean_link_karma) > 2
             )
         except StopIteration:
             return None
@@ -94,13 +94,13 @@ class Simulator:
             return False
 
         subreddit = account.session.subreddit(self.subreddit)
-        submissions = subreddit.hot(limit=50)
+        submissions = subreddit.new(limit=25)
 
         for submission in submissions:
             if self.can_comment_on(submission):
                 return account.post_comment_on(submission)
         else:
-            submissions = subreddit.top("all", limit=25)
+            submissions = subreddit.top("all", limit=50)
             for submission in submissions:
                 if self.can_comment_on(submission):
                     return account.post_comment_on(submission)
@@ -122,7 +122,7 @@ class Simulator:
         if not account:
             return False
 
-        max_candidates = 10
+        max_candidates = 15
 
         subreddit = account.session.subreddit(self.subreddit)
         submissions = subreddit.hot(limit=25)
@@ -136,7 +136,7 @@ class Simulator:
                 candidates.append(submission.fullname)
 
         else:
-            submissions = subreddit.new(limit=25)
+            submissions = subreddit.new(limit=50)
             for submission in submissions:
                 if len(candidates) >= max_candidates // 2:
                     break
