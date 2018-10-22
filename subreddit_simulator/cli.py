@@ -196,6 +196,8 @@ def setup_logging(verbose: int, output: IO) -> None:
     handler.setLevel(level)
     logging.basicConfig(level=level, handlers=[handler])
     logging.getLogger("sqlalchemy.engine").setLevel(level)
+    logging.getLogger("praw").setLevel(level)
+    logging.getLogger("prawcore").setLevel(level)
 
 
 def load_config_file(config_file: str, verbose: int, output: IO) -> Config:
