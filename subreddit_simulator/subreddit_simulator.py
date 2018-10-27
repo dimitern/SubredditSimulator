@@ -28,6 +28,7 @@ class Simulator:
             account.config = self.config
             account.engine = self.engine
             account.db = self.db
+            account.session  # force a login to ensure account is up-to-date
 
             self.accounts[subreddit] = account
 
@@ -223,7 +224,7 @@ class Simulator:
 
     def pick_account_to_vote(self):
         accounts = []
-        min_karma = 2
+        min_karma = 1
 
         for account in self.accounts.values():
             if not account.can_comment:
