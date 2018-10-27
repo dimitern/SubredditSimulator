@@ -1,3 +1,4 @@
+import random
 import re
 from configparser import SafeConfigParser
 from operator import attrgetter
@@ -125,6 +126,13 @@ class Config:
     # Regular expression for subreddit names to match in the response.
     name_regexp: re.Pattern = attr.ib(default="", converter=re.compile)  # type: ignore
 
+    # Proxies configuration.
+    proxy_hosts_csv: List[str] = attr.ib(factory=list, converter=parse_str_csv)
+    proxy_ports_csv: List[str] = attr.ib(factory=list, converter=parse_str_csv)
+    proxy_users_csv: List[str] = attr.ib(factory=list, converter=parse_str_csv)
+    proxy_paswd_csv: List[str] = attr.ib(factory=list, converter=parse_str_csv)
+    random_proxy_per_account: bool = attr.ib(default=False, converter=parse_bool)
+
     # NOTE: The following config settings should not be changed,
     # unless using a custom Reddit instance, rather than reddit.com.
     comment_kind: str = attr.ib(default="t1", converter=str_lower)
@@ -136,6 +144,23 @@ class Config:
     reddit_url: str = attr.ib(default="https://www.reddit.com")
     short_url: str = attr.ib(default="https://redd.it")
     allow_self_signed_ssl_certs: bool = attr.ib(default=False, converter=parse_bool)
+
+    @property
+    def proxy_urls(self):
+        return [
+            f"https://{user}:{paswd}@{host}:{port}/"
+            for host, port, user, paswd in zip(
+                self.proxy_hosts_csv,
+                self.proxy_ports_csv,
+                self.proxy_users_csv,
+                self.proxy_paswd_csv,
+            )
+        ]
+
+    @property
+    def random_proxy(self):
+        proxy = random.choice(self.proxy_urls)
+        return {"https": proxy, "http": proxy.replace("https:", "http:")}
 
     @classmethod
     def from_file(cls, filename: str = None) -> "Config":
@@ -154,7 +179,7 @@ class Config:
             map(attrgetter("name"), attr.fields(cls)), ""
         )
 
-        sections = ("database", "settings", "accounts", "top_subreddits")
+        sections = ("database", "settings", "accounts", "top_subreddits", "proxies")
         for section in sections:
             if not parser.has_section(section):
                 raise KeyError(f"No [{section}] in {path!s}!")
@@ -167,7 +192,16 @@ class Config:
 
     @classmethod
     def from_db(cls, db) -> "Config":
-        csvs = ("usernames_csv", "passwords_csv", "subreddits_csv", "ignored_users")
+        csvs = (
+            "usernames_csv",
+            "passwords_csv",
+            "subreddits_csv",
+            "ignored_users",
+            "proxy_users_csv",
+            "proxy_hosts_csv",
+            "proxy_ports_csv",
+            "proxy_paswd_csv",
+        )
         config: Dict[str, Any] = {}
         for csv in csvs:
             config.setdefault(csv, [])
@@ -223,7 +257,15 @@ class Config:
                 session.add(settings[name])
 
         if only and not set(
-            ["usernames_csv", "passwords_csv", "subreddits_csv"]
+            [
+                "usernames_csv",
+                "passwords_csv",
+                "subreddits_csv",
+                "proxy_hosts_csv",
+                "proxy_ports_csv",
+                "proxy_users_csv",
+                "proxy_paswd_csv",
+            ]
         ).isdisjoint(set(only)):
             session.commit()
             return

@@ -3,8 +3,10 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Callable, List, Tuple
+from pprint import pprint
+from typing import IO, Callable, Tuple
 
+import attr
 import click
 
 from . import __version__
@@ -142,11 +144,12 @@ def run_main_loop(config: Config, simulator: Simulator, verbose: int, output: IO
 def unexpected_command(ctx, output: IO) -> None:
     echo(
         "$FG_RED${BOLD}ERROR:$NORMAL Expected at least one of "
-        "the options: $BOLD$FG_YELLOW"
-        + "$NORMAL, $BOLD$FG_YELLOW".join(
+        "the options: $BOLD${FG_YELLOW}"
+        + "${NORMAL}, $BOLD${FG_YELLOW}".join(
             ["--run", "--create-db", "--drop_db", "--show_db"]
         ),
         file=output,
+        max_length=-1,
     )
     echo(ctx.get_help(), file=output)
     ctx.exit(1)
@@ -308,6 +311,7 @@ def show_database(engine: Engine, output: IO):
 @click.help_option("-h", "--help")
 @click.version_option(__version__, "-V", "--version")
 @click.option("--show-accounts", "-a", is_flag=True, help="Show accounts table.")
+@click.option("--show-config", "-c", is_flag=True, help="Show configuration settings.")
 @click.option("--run", "-r", is_flag=True, help="Run main loop.")
 @click.option("--create-db", "-C", is_flag=True, help="Create the database schema.")
 @click.option("--drop-db", "-D", is_flag=True, help="Drop the database schema")
@@ -354,6 +358,7 @@ def main(
     drop_db,
     show_db,
     show_accounts,
+    show_config,
     config_file,
     verbose,
     output,
@@ -381,6 +386,11 @@ def main(
 
     if show_db:
         show_database(engine, output)
+
+    if show_config:
+        echo("\n$FG_YELLOW${BOLD}Configration", file=output)
+        separator(file=output)
+        pprint(attr.asdict(db_config), stream=output)
 
     if run:
         simulator = Simulator(config=db_config, engine=engine, output=output)

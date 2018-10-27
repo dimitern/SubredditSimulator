@@ -85,3 +85,15 @@ subreddits_csv = r/Bitcoin, r/Monet, r/Ripple
 url = https://www.crypto-roadmaps.com/single-post/2018/05/01/Top-100-SubReddits
 # Regular expression for subreddit names to match in the response.
 name_regexp = ^.*\b(r/[A-Za-z0-9_-]+)\b.*$
+
+# Optional HTTP/HTTPS proxies to use for connections.
+[proxies]
+proxy_hosts_csv = 127.0.0.1, example.com
+proxy_ports_csv = 80, 443
+proxy_users_csv = username1, username2
+proxy_paswd_csv = password1, password2
+
+# If the following is set to True, On, Yes, or 1 (case-insensitive),
+# each account will have a random proxy assigned to it from the
+# list of proxies at the end. Otherwise no proxies will be used.
+random_proxy_per_account = no

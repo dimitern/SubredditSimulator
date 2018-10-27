@@ -3,14 +3,13 @@ import random
 import sys
 from datetime import datetime
 
+import markovify
+import praw
+import prawcore
 import pytz
 import requests
 from sqlalchemy import Boolean, Column, DateTime, Index, Integer, String, Text
 from sqlalchemy.ext.declarative import declarative_base
-
-import markovify
-import praw
-import prawcore
 
 from .database import JSONSerialized
 from .utils import echo
@@ -80,6 +79,7 @@ class Account(Base):  # type: ignore
     comment_karma = Column(Integer, default=0)
     num_comments = Column(Integer, default=0)
     last_commented = Column(DateTime(timezone=True))
+    proxy_url = Column(String(255), default="")
 
     def __init__(
         self,
@@ -121,11 +121,30 @@ class Account(Base):  # type: ignore
 
             requestor_kwargs = None
             if self.config.allow_self_signed_ssl_certs:
-                echo("$FG_YELLOW${DIM}Allowing self-signed SSL certs")
+                echo("$FG_YELLOW${DIM}Allowing self-signed SSL certs", file=self.output)
                 requests.packages.urllib3.disable_warnings()
                 unverified_session = requests.Session()
                 unverified_session.verify = False
                 requestor_kwargs = {"session": unverified_session}
+
+            if self.config.random_proxy_per_account:
+                session = requestor_kwargs.get("session", requests.Session())
+                if not self.proxy_url:
+                    self.proxy_url = self.config.random_proxy["https"]
+
+                session.proxies = {
+                    "https": self.proxy_url,
+                    "http": self.proxy_url.replace("https:", "http:"),
+                }
+                echo(
+                    "$FG_CYAN${DIM}Using proxy $BOLD${url}$NORMAL for account $BOLD${name}",
+                    max_length=-1,
+                    file=self.output,
+                    url=self.proxy_url,
+                    name=self.name,
+                )
+
+                requestor_kwargs = {"session": session}
 
             self._session = praw.Reddit(
                 client_id=self.config.client_id,
