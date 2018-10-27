@@ -300,7 +300,7 @@ class Simulator:
         reason = ""
         min_comments, max_comments = random.randint(0, 3), random.randint(10, 30)
         min_score, max_score = 1, 30
-        min_ratio = 1.0
+        min_ratio = 0.75
 
         if submission.locked:
             reason = "submission is locked"
@@ -405,9 +405,10 @@ class Simulator:
         subreddit = account.session.subreddit(self.subreddit)
         submissions = subreddit.new(limit=limit)
 
+        candidates = []
         for submission in submissions:
-            if self.can_comment_on(submission):
-                return account.post_comment_on(submission), account.name
+            candidates += [submission]
+
         else:
             echo(
                 "$FG_YELLOW${DIM}Getting $BOLD$limit$NORMAL$DIM top submissions "
@@ -420,10 +421,20 @@ class Simulator:
 
             submissions = subreddit.top("all", limit=limit)
             for submission in submissions:
-                if self.can_comment_on(submission):
-                    return account.post_comment_on(submission), account.name
+                candidates += [submission]
 
-        return False, f"Cannot pick submission to comment on with {account.name}!"
+        if not candidates:
+            return False, "Cannot find a suitable submission to comment on!"
+
+        for submission in sorted(
+            candidates,
+            key=lambda s: (s.score or 1) / (s.num_comments or 1),
+            reverse=True,
+        ):
+            if self.can_comment_on(submission):
+                return account.post_comment_on(submission), account.name
+
+        return False, f"Cannot post submission to comment on with {account.name}!"
 
     def make_submission(self):
         account = self.pick_account_to_submit()
