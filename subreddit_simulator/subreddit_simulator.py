@@ -300,7 +300,7 @@ class Simulator:
         reason = ""
         min_comments, max_comments = random.randint(0, 3), random.randint(10, 30)
         min_score, max_score = 1, 30
-        min_ratio = 0.75
+        min_ratio = 0.5
 
         if submission.locked:
             reason = "submission is locked"
