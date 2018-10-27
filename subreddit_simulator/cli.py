@@ -24,26 +24,38 @@ def describe_command(
     verbose: int,
     prefix: str,
     output: IO,
-    callback: Callable[[], bool],
+    callback: Callable[[], Tuple[bool, str]],
     on_success_update: str,
     config: Config,
 ):
-    if verbose > 1:
+    if verbose > 0:
         echo(
             "\n" + prefix + "${DIM}Trying to $description in ${BOLD}r/${subreddit}...",
             subreddit=subreddit,
             description=description,
             file=output,
         )
-    if callback():
+    result, account_or_message = callback()
+    if result:
         echo(
-            prefix + "$success on $BOLD${time}",
+            prefix + "$success by $BOLD$user$NORMAL on $BOLD${time}",
             time=datetime.now().isoformat(),
             file=output,
             success=success,
+            user=account_or_message,
         )
         setattr(config, on_success_update, time.time())
         config.update_db(only=[on_success_update])
+
+    else:
+        echo(
+            prefix + "$FG_RED$failure: $BOLD$reason$NORMAL at $BOLD${time}",
+            time=datetime.now().isoformat(),
+            file=output,
+            failure=f"Failed to {description}",
+            reason=account_or_message,
+            max_length=-1,
+        )
 
 
 def run_main_loop(config: Config, simulator: Simulator, verbose: int, output: IO):

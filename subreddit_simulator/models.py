@@ -218,6 +218,14 @@ class Account(Base):  # type: ignore
             return round(self.link_karma / float(self.num_submissions), 2)
 
     def get_comments_from_site(self, limit=100, store_in_db=True):
+        echo(
+            "$FG_WHITE${DIM}Getting up to ${limit} comments from $BOLD${subreddit}...",
+            max_length=-1,
+            limit=limit,
+            subreddit=self.subreddit,
+            file=self.output,
+        )
+
         subreddit = self.session.subreddit(self.subreddit)
 
         seen_ids = set(
@@ -246,6 +254,17 @@ class Account(Base):  # type: ignore
         return comments
 
     def get_submissions_from_site(self, limit=100, store_in_db=True, top_of="day"):
+        echo(
+            "$FG_WHITE${DIM}Getting up to ${limit} top "
+            "$BOLD${top}$NORMAL$DIM submissions "
+            "from $BOLD${subreddit}...",
+            max_length=-1,
+            limit=limit,
+            top="daily" if top_of == "day" else top_of,
+            subreddit=self.subreddit,
+            file=self.output,
+        )
+
         subreddit = self.session.subreddit(self.subreddit)
 
         # get the newest submission we've previously seen as a stopping point
@@ -288,6 +307,15 @@ class Account(Base):  # type: ignore
         return True
 
     def get_comments_for_training(self, limit=None):
+        echo(
+            "$FG_GREEN${DIM}Getting up to ${limit} recent comments for training "
+            "from $BOLD${subreddit}...",
+            max_length=-1,
+            limit=limit or self.config.max_corpus_size,
+            subreddit=self.subreddit,
+            file=self.output,
+        )
+
         comments = (
             self.db.query(Comment)
             .filter_by(subreddit=self.subreddit)
@@ -302,6 +330,15 @@ class Account(Base):  # type: ignore
         return valid_comments
 
     def get_submissions_for_training(self, limit=None):
+        echo(
+            "$FG_GREEN${DIM}Getting up to ${limit} recent submissions for training "
+            "from $BOLD${subreddit}...",
+            max_length=-1,
+            limit=limit or self.config.max_corpus_size,
+            subreddit=self.subreddit,
+            file=self.output,
+        )
+
         submissions = (
             self.db.query(Submission)
             .filter_by(subreddit=self.subreddit)
