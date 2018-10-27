@@ -92,7 +92,7 @@ class Account(Base):  # type: ignore
         engine=None,
         output=None,
     ):
-        self.name = name
+        self.name = name.lower()
         self.password = password
         self.subreddit = subreddit.lower()
         if self.subreddit.startswith("r/"):
@@ -639,6 +639,7 @@ class Comment(Base):  # type: ignore
     body = Column(Text)
     score = Column(Integer)
     permalink = Column(Text)
+
     __table_args__ = (Index("ix_comment_subreddit_date", "subreddit", "date"),)
 
     def __init__(self, comment, *, config=None):

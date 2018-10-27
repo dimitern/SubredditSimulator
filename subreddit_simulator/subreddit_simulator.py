@@ -20,8 +20,9 @@ class Simulator:
         self.output = output
 
         for account in self.db.query(Account):
+            account.name = account.name.lower()
             subreddit = account.subreddit
-            if account.name == self.config.moderator:
+            if account.name == self.config.moderator.lower():
                 subreddit = self.subreddit
 
             account.output = self.output

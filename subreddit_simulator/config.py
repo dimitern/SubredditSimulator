@@ -44,7 +44,7 @@ def parse_user(value: str) -> str:
         value = value[1:]
     if value.startswith(("u/", "user/")):
         *_, value = value.partition("/")
-    return value
+    return value.lower()
 
 
 def parse_subreddit(value: str) -> str:
@@ -210,7 +210,7 @@ class Config:
             config[setting.name] = setting.value
 
         for account in db.query(models.Account):
-            config["usernames_csv"] += [account.name]
+            config["usernames_csv"] += [account.name.lower()]
             config["passwords_csv"] += [account.password]
             config["subreddits_csv"] += [account.subreddit]
 
@@ -270,10 +270,11 @@ class Config:
             session.commit()
             return
 
-        accounts = {a.name: a for a in session.query(models.Account)}
+        accounts = {a.name.lower(): a for a in session.query(models.Account)}
         for username, password, subreddit in zip(
             self.usernames_csv, self.passwords_csv, self.subreddits_csv
         ):
+            username = username.lower()
             if username not in accounts:
                 accounts[username] = models.Account(
                     username, "", "", config=self, engine=db
