@@ -119,7 +119,7 @@ class Account(Base):  # type: ignore
                 max_length=-1,
             )
 
-            requestor_kwargs = None
+            requestor_kwargs = {}
             if self.config.allow_self_signed_ssl_certs:
                 echo("$FG_YELLOW${DIM}Allowing self-signed SSL certs", file=self.output)
                 requests.packages.urllib3.disable_warnings()
@@ -145,6 +145,9 @@ class Account(Base):  # type: ignore
                 )
 
                 requestor_kwargs = {"session": session}
+
+            if not requestor_kwargs:
+                requestor_kwargs = None
 
             self._session = praw.Reddit(
                 client_id=self.config.client_id,
