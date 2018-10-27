@@ -2,3 +2,4 @@ __pycache__/
 .mypy_cache/
 subreddit_simulator.cfg
 /SubredditSimulator.egg-info
+subreddit_simulator.log
