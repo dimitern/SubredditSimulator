@@ -172,9 +172,15 @@ class Account(Base):  # type: ignore
             )
 
         try:
-            me = self._session.user.me()
+            me = self._session.user.me(use_cache=False)
             self.link_karma = int(me.link_karma)
             self.comment_karma = int(me.comment_karma)
+            if self.num_comments < self.comment_karma:
+                self.num_comments = self.comment_karma
+                self.last_commented = datetime.now(pytz.utc)
+            if self.num_submissions < self.link_karma:
+                self.num_submissions = self.link_karma
+                self.last_submitted = datetime.now(pytz.utc)
             self.db.add(self)
             self.db.flush()
             self.db.commit()
@@ -340,6 +346,7 @@ class Account(Base):  # type: ignore
             comment for comment in comments if self.should_include_comment(comment)
         ]
         random.shuffle(valid_comments)
+        logger.info("valid comments for training: %d", len(valid_comments))
         return valid_comments
 
     def get_submissions_for_training(self, limit=None):
@@ -352,12 +359,13 @@ class Account(Base):  # type: ignore
             file=self.output,
         )
 
-        submissions = (
+        submissions = list(
             self.db.query(Submission)
             .filter_by(subreddit=self.subreddit)
             .order_by(Submission.date.desc())
             .limit(self.config.max_corpus_size)
         )
+        logger.debug("%d total submissions for training", len(submissions))
         valid_submissions = [
             submission
             for submission in submissions
@@ -365,6 +373,7 @@ class Account(Base):  # type: ignore
             and submission.author not in self.config.ignored_users
         ]
         random.shuffle(valid_submissions)
+        logger.info("valid submissions for training: %d", len(valid_submissions))
         return valid_submissions
 
     def train_from_comments(self, get_new_comments=True):
@@ -396,7 +405,8 @@ class Account(Base):  # type: ignore
             self.comment_model = SubredditSimulatorText(
                 " ".join(comments).strip(), state_size=state_size
             )
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as err:
+            logger.error("Cannot construct comment model: %s", err, exc_info=True)
             self.comment_model = None
             return False
 
@@ -407,6 +417,8 @@ class Account(Base):  # type: ignore
             submissions = self.get_submissions_from_site(top_of="day")
             if not submissions:
                 submissions = self.get_submissions_from_site(top_of="all")
+            if not submissions:
+                submissions = self.get_submissions_for_training()
         else:
             submissions = self.get_submissions_for_training()
 
@@ -414,6 +426,7 @@ class Account(Base):  # type: ignore
         selftexts = []
         self.link_submissions = []
 
+        logger.debug("%d submissions selected for training", len(submissions))
         for submission in submissions:
             titles.append(submission.title)
             if submission.url:
@@ -425,9 +438,11 @@ class Account(Base):  # type: ignore
             len(submissions) or 0.001
         )
 
+        logger.debug("%d titles extracted: %r", len(titles), titles)
         try:
             self.title_model = SubredditSimulatorText(" ".join(titles), state_size=2)
-        except (ValueError, IndexError):
+        except (ValueError, IndexError) as err:
+            logger.error("Cannot construct title model: %s", err, exc_info=True)
             self.title_model = None
             return False
 
@@ -449,7 +464,10 @@ class Account(Base):  # type: ignore
                     self.selftext_model = SubredditSimulatorText(
                         " ".join(selftexts), state_size=state_size
                     )
-                except (ValueError, IndexError):
+                except (ValueError, IndexError) as err:
+                    logger.error(
+                        "Cannot construct selftext model: %s", err, exc_info=True
+                    )
                     self.selftext_model = None
                     return False
 
@@ -543,6 +561,7 @@ class Account(Base):  # type: ignore
         self.db.add(self)
         self.db.flush()
         self.db.commit()
+        self.session  # force refresh
         return True
 
     def pick_submission_type(self):
@@ -624,6 +643,7 @@ class Account(Base):  # type: ignore
         self.db.add(self)
         self.db.flush()
         self.db.commit()
+        self.session  # force refresh
         return True
 
 

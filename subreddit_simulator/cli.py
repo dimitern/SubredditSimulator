@@ -143,6 +143,7 @@ def run_main_loop(config: Config, simulator: Simulator, verbose: int, output: IO
             time=datetime.now().isoformat(),
             file=output,
         )
+        return False
 
     except Exception as err:
         echo(
@@ -153,6 +154,8 @@ def run_main_loop(config: Config, simulator: Simulator, verbose: int, output: IO
         )
         for line in traceback.format_exc().splitlines():
             echo("$DIM$FG_RED${line}", line=line, file=output, max_length=-1)
+
+        return True
 
 
 def unexpected_command(ctx, output: IO) -> None:
@@ -411,6 +414,7 @@ def main(
         if show_accounts:
             simulator.print_accounts_table()
 
-        run_main_loop(db_config, simulator, verbose, output)
+        while run_main_loop(db_config, simulator, verbose, output):
+            pass
 
     ctx.exit(0)
