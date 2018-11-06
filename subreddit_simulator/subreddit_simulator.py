@@ -2,6 +2,8 @@ import html.parser
 import random
 import re
 from datetime import datetime, timedelta
+from logging import getLogger
+from operator import attrgetter
 
 import praw
 import pytz
@@ -9,291 +11,248 @@ import pytz
 from .models import Account
 from .utils import echo
 
+logger = getLogger(__name__)
+
 
 class Simulator:
     def __init__(self, config=None, engine=None, output=None):
+        logger.debug("Using %r", config)
+        logger.debug("Using %r", engine)
+
         self.config = config
         self.engine = engine
         self.db = self.engine.create_session()
         self.accounts = {}
         self.subreddit = self.config.subreddit
         self.output = output
+        logger.info("Configured subreddit:  %r", self.subreddit)
 
+        logger.debug("Loading accounts from the database...")
         for account in self.db.query(Account):
             account.name = account.name.lower()
+            logger.info("Account %r uses subreddit %r", account.name, account.subreddit)
+
             subreddit = account.subreddit
             if account.name == self.config.moderator.lower():
                 subreddit = self.subreddit
+                logger.info(
+                    "Subreddit %s moderator account is %r", subreddit, account.name
+                )
 
             account.output = self.output
             account.config = self.config
             account.engine = self.engine
             account.db = self.db
+
+            logger.debug("Establishing Reddit session for %r", account.name)
             account.session  # force a login to ensure account is up-to-date
 
             self.accounts[subreddit] = account
 
         self.mod_account = self.accounts[self.subreddit]
+        logger.info("%d accounts loaded and initialized", len(self.accounts))
+
+    def timedelta_since_last_comment(self, account):
+        logger.debug("Checking time since account %r last commented...", account.name)
+        min_interval = timedelta(seconds=self.config.min_seconds_since_last_comment)
+
+        if not account.can_comment:
+            logger.debug("Account %r not allowed to comment", account.name)
+            return timedelta(seconds=0)
+
+        if not account.last_commented:
+            logger.debug("Account %r never commented before", account.name)
+            return min_interval
+
+        ago = datetime.now(pytz.utc) - account.last_commented
+        logger.debug("Account %r's last comment was %s ago", account.name, ago)
+        return ago
 
     def pick_account_to_comment(self):
-        now = datetime.now(pytz.utc)
-        accounts = []
-        min_interval = timedelta(seconds=600)
+        logger.debug("Picking account to comment...")
 
-        for account in self.accounts.values():
-            if not account.can_comment:
-                echo(
-                    "${FG_YELLOW}Skipping account $BOLD${name}$NORMAL: "
-                    "cannot comment",
-                    file=self.output,
-                    name=account.name,
-                    max_length=-1,
-                )
-                continue
+        min_interval = timedelta(seconds=self.config.min_seconds_since_last_comment)
+        logger.debug("Minimum time required since last comment: %s", min_interval)
 
-            if account.last_commented:
-                ago = now - account.last_commented
-                if ago < min_interval:
-                    echo(
-                        "${FG_YELLOW}Skipping account $BOLD${name}$NORMAL: "
-                        "last commented ${time} (less than ${min} ago - $BOLD${ago})",
-                        file=self.output,
-                        name=account.name,
-                        time=account.last_commented.isoformat(),
-                        ago=ago,
-                        min=min_interval,
-                        max_length=-1,
-                    )
-                    continue
-                else:
-                    echo(
-                        "${FG_YELLOW}Choosing account $BOLD${name}$NORMAL: "
-                        "last commented ${time} (more than ${min} ago - $BOLD${ago})",
-                        file=self.output,
-                        name=account.name,
-                        time=account.last_commented.isoformat(),
-                        ago=ago,
-                        min=min_interval,
-                        max_length=-1,
-                    )
-            else:
-                echo(
-                    "${FG_YELLOW}Choosing account $BOLD${name}$NORMAL: "
-                    "never commented before",
-                    file=self.output,
-                    name=account.name,
-                    max_length=-1,
-                )
+        accounts = list(
+            filter(
+                attrgetter("can_comment"),
+                sorted(
+                    self.accounts.values(),
+                    key=self.timedelta_since_last_comment,
+                    reverse=True,
+                ),
+            )
+        )
 
-            accounts += [account]
-
-        # if any account hasn't commented yet, pick that one
+        # If any account hasn't commented yet, pick that one.
         try:
             account = next(a for a in accounts if not a.last_commented)
-            echo(
-                "${FG_GREEN}Picked account $BOLD${name}$NORMAL: "
-                "never commented before.",
-                file=self.output,
-                name=account.name,
-                max_length=-1,
+            logger.info(
+                "Picked account %r to comment: never commented before", account.name
             )
             return account
 
         except StopIteration:
             pass
 
-        # pick an account from the 25% that commented longest ago
-        kept_accounts = sorted(accounts, key=lambda a: a.last_commented)
-        num_to_keep = int(len(kept_accounts) * 0.25)
+        # Pick an account from the 25% that commented longest ago.
+        num_accounts = len(accounts)
+        num_to_keep = int(num_accounts * 0.25) or num_accounts
 
-        echo(
-            "$FG_WHITE${DIM}Keeping 25% ($num) of all least "
-            "recently commented accounts ($all)",
-            file=self.output,
-            num=num_to_keep,
-            all=len(kept_accounts),
+        logger.debug(
+            "Keeping %d of %d least recently commented accounts",
+            num_to_keep,
+            num_accounts,
         )
 
-        if num_to_keep:
-            account = random.choice(kept_accounts[:num_to_keep])
-            ago = now - account.last_commented
-            echo(
-                "${FG_GREEN}Picked random account $BOLD${name}$NORMAL: "
-                "among the 25% least recently commented (at ${time} - $BOLD${ago} ago)",
-                file=self.output,
-                name=account.name,
-                time=account.last_commented.isoformat(),
-                ago=ago,
-                max_length=-1,
-            )
-            return account
+        account = random.choice(accounts[:num_to_keep]) if accounts else None
+        if not account:
+            logger.error("Cannot pick account to comment: no suitable accounts")
 
-        account = random.choice(accounts) if accounts else None
-        if account:
-            ago = now - account.last_commented
-            echo(
-                "${FG_GREEN}Picked random account $BOLD${name}$NORMAL: "
-                "among all least recently commented (at ${time} - $BOLD${ago} ago)",
-                file=self.output,
-                name=account.name,
-                time=account.last_commented.isoformat(),
-                ago=ago,
-                max_length=-1,
-            )
+        else:
+            logger.info("Picked account %r to comment", account.name)
+
         return account
+
+    def timedelta_since_last_submission(self, account):
+        logger.debug("Checking time since account %r last submitted...", account.name)
+        min_interval = timedelta(seconds=self.config.min_seconds_since_last_submission)
+
+        if not account.can_submit:
+            logger.debug("Account %r not allowed to submit", account.name)
+            return timedelta(seconds=0)
+
+        if not account.last_submitted:
+            logger.debug("Account %r never submitted before", account.name)
+            return min_interval
+
+        ago = datetime.now(pytz.utc) - account.last_submitted
+        logger.debug("Account %r's last submission was %s ago", account.name, ago)
+        return ago
 
     def pick_account_to_submit(self):
-        now = datetime.now(pytz.utc)
-        accounts = []
+        logger.debug("Picking account to make a submission...")
 
-        for account in self.accounts.values():
-            if not account.is_able_to_submit:
-                echo(
-                    "${FG_YELLOW}Skipping account $BOLD${name}$NORMAL: "
-                    "cannot submit",
-                    file=self.output,
-                    name=account.name,
-                    max_length=-1,
-                )
-                continue
+        min_interval = timedelta(seconds=self.config.min_seconds_since_last_submission)
+        logger.debug("Minimum time required since last submission: %s", min_interval)
 
-            echo(
-                "${FG_YELLOW}Choosing account $BOLD${name}$NORMAL: can submit",
-                file=self.output,
-                name=account.name,
-                max_length=-1,
+        accounts = list(
+            filter(
+                attrgetter("can_submit"),
+                sorted(
+                    self.accounts.values(),
+                    key=self.timedelta_since_last_submission,
+                    reverse=True,
+                ),
             )
+        )
 
-            accounts += [account]
-
-        # if any account hasn't submitted yet, pick that one
+        # If any account hasn't posted as submission yet, pick that one.
         try:
             account = next(a for a in accounts if not a.last_submitted)
-            echo(
-                "${FG_GREEN}Picked account $BOLD${name}$NORMAL: "
-                "never submitted before.",
-                file=self.output,
-                name=account.name,
-                max_length=-1,
+            logger.info(
+                "Picked account %r to submit: never made a submission before",
+                account.name,
             )
             return account
 
         except StopIteration:
             pass
 
-        # pick an account from the 25% that submitted longest ago
-        kept_accounts = sorted(accounts, key=lambda a: a.last_submitted)
-        num_to_keep = int(len(kept_accounts) * 0.25)
+        # Pick an account from the 25% that submitted longest ago.
+        num_accounts = len(accounts)
+        num_to_keep = int(num_accounts * 0.25) or num_accounts
 
-        echo(
-            "$FG_WHITE${DIM}Keeping 25% ($num) of all accounts least "
-            "recently made a submission ($all)",
-            file=self.output,
-            num=num_to_keep,
-            all=len(kept_accounts),
+        logger.debug(
+            "Keeping %d of %d accounts that least recently made a submission",
+            num_to_keep,
+            num_accounts,
         )
 
-        if num_to_keep:
-            account = random.choice(kept_accounts[:num_to_keep])
-            ago = now - account.last_submitted
-            echo(
-                "${FG_GREEN}Picked random account $BOLD${name}$NORMAL: "
-                "among the 25% of those least recently made a submission "
-                "(at ${time} - $BOLD${ago} ago)",
-                file=self.output,
-                name=account.name,
-                time=account.last_submitted.isoformat(),
-                ago=ago,
-                max_length=-1,
+        account = random.choice(accounts[:num_to_keep]) if accounts else None
+        if not account:
+            logger.error(
+                "Cannot pick account to make a submission: no suitable accounts"
             )
-            return account
 
-        account = random.choice(accounts) if accounts else None
-        if account:
-            ago = now - account.last_commented
-            echo(
-                "${FG_GREEN}Picked random account $BOLD${name}$NORMAL: "
-                "among all of those least recently made a submission "
-                "(at ${time} - $BOLD${ago} ago)",
-                file=self.output,
-                name=account.name,
-                time=account.last_submitted.isoformat(),
-                ago=ago,
-                max_length=-1,
-            )
+        else:
+            logger.info("Picked account %r to make a submission", account.name)
+
         return account
 
+    def timedelta_since_last_vote(self, account):
+        logger.debug("Checking time since account %r last voted...", account.name)
+        min_interval = timedelta(seconds=self.config.min_seconds_since_last_vote)
+        min_karma = self.config.min_karma_to_vote
+
+        if not account.can_comment:
+            logger.debug("Account %r not allowed to comment", account.name)
+            return timedelta(seconds=0)
+
+        if not account.can_submit:
+            logger.debug("Account %r not allowed to submit", account.name)
+            return timedelta(seconds=0)
+
+        total_karma = account.link_karma + account.comment_karma
+        if total_karma < min_karma:
+            logger.debug("Account %r has total karma %d", account.name, total_karma)
+            return timedelta(seconds=0)
+
+        if not account.last_voted:
+            logger.debug("Account %r never voted before", account.name)
+            return min_interval
+
+        ago = datetime.now(pytz.utc) - account.last_voted
+        logger.debug("Account %r's last vote was %s ago", account.name, ago)
+        return ago
+
     def pick_account_to_vote(self):
-        accounts = []
-        min_karma = 1
+        logger.debug("Picking account to vote...")
 
-        for account in self.accounts.values():
-            if not account.can_comment:
-                echo(
-                    "${FG_YELLOW}Skipping account $BOLD${name}$NORMAL: "
-                    "cannot comment",
-                    file=self.output,
-                    name=account.name,
-                    max_length=-1,
-                )
-                continue
+        min_interval = timedelta(seconds=self.config.min_seconds_since_last_vote)
+        logger.debug("Minimum time required since last vote: %s", min_interval)
+        min_karma = self.config.min_karma_to_vote
+        logger.debug("Minimum total karma required to vote: %d", min_karma)
 
-            if not account.can_submit:
-                echo(
-                    "${FG_YELLOW}Skipping account $BOLD${name}$NORMAL: "
-                    "cannot submit",
-                    file=self.output,
-                    name=account.name,
-                    max_length=-1,
-                )
-                continue
-
-            if account.comment_karma + account.link_karma <= min_karma:
-                echo(
-                    "${FG_YELLOW}Skipping account $BOLD${name}$NORMAL: "
-                    "total comment karma ($ck) and link karma ($lk) less than $min",
-                    file=self.output,
-                    name=account.name,
-                    ck=account.comment_karma,
-                    lk=account.comment_karma,
-                    min=min_karma,
-                    max_length=-1,
-                )
-                continue
-
-            echo(
-                "${FG_GREEN}Picked account $BOLD${name}$NORMAL: total karma $k",
-                file=self.output,
-                name=account.name,
-                k=account.comment_karma + account.link_karma,
-                max_length=-1,
+        accounts = list(
+            filter(
+                attrgetter("can_vote"),
+                sorted(
+                    self.accounts.values(),
+                    key=self.timedelta_since_last_vote,
+                    reverse=True,
+                ),
             )
-            accounts += [account]
+        )
 
-        random.shuffle(accounts)
-
+        # If any account hasn't voted yet, pick that one.
         try:
-            account = next(a for a in accounts)
-            echo(
-                "${FG_GREEN}Picked account $BOLD${name}$NORMAL: "
-                "has total comment karma ($ck) and link karma ($lk) over $min",
-                file=self.output,
-                name=account.name,
-                ck=account.comment_karma,
-                lk=account.link_karma,
-                min=min_karma,
-                max_length=-1,
-            )
+            account = next(a for a in accounts if not a.last_voted)
+            logger.info("Picked account %r to vote: never voted before", account.name)
             return account
 
         except StopIteration:
-            echo(
-                "${FG_RED}No account has total comment and link karma over $min",
-                file=self.output,
-                min=min_karma,
-                max_length=-1,
-            )
-            return None
+            pass
+
+        # Pick an account from the 25% that voted longest ago.
+        num_accounts = len(accounts)
+        num_to_keep = int(num_accounts * 0.25) or num_accounts
+
+        logger.debug(
+            "Keeping %d of %d accounts that least recently voted",
+            num_to_keep,
+            num_accounts,
+        )
+
+        account = random.choice(accounts[:num_to_keep]) if accounts else None
+        if not account:
+            logger.error("Cannot pick account to vote: no suitable accounts")
+
+        else:
+            logger.info("Picked account %r to vote", account.name)
+
+        return account
 
     def can_comment_on(self, submission):
         result = True

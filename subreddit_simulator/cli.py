@@ -16,6 +16,8 @@ from .models import Base
 from .subreddit_simulator import Simulator
 from .utils import ColorStreamHandler, echo, separator
 
+logger = logging.getLogger(__name__)
+
 
 def describe_command(
     description: str,

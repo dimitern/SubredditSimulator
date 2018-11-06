@@ -1,6 +1,7 @@
 import random
 import re
 from configparser import SafeConfigParser
+from logging import getLogger
 from operator import attrgetter
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -8,6 +9,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import attr
 
 from . import database, models
+
+logger = getLogger(__name__)
 
 DEFAULT_SUBREDDIT_SIMULATOR_CONFIG = "subreddit_simulator.cfg"
 
@@ -110,6 +113,14 @@ class Config:
     leaderboard_update_delay_seconds: int = attr.ib(default=1800, converter=int)
     main_loop_delay_seconds: int = attr.ib(default=60, converter=int)
     voting_delay_seconds: int = attr.ib(default=60, converter=int)
+
+    # Picking account to post a comment.
+    min_seconds_since_last_comment: int = attr.ib(default=600, converter=int)
+    # Picking account to post a submission.
+    min_seconds_since_last_submission: int = attr.ib(default=600, converter=int)
+    # Picking account to vote on a submission / comment.
+    min_seconds_since_last_vote: int = attr.ib(default=60, converter=int)
+    min_karma_to_vote: int = attr.ib(default=2, converter=int)
 
     last_comment: float = attr.ib(default=0.0, converter=optional_float)
     last_submission: float = attr.ib(default=0.0, converter=optional_float)

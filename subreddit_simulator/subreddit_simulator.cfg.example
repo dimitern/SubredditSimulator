@@ -43,6 +43,19 @@ max_corpus_size = 1000
 # Ignored users can be a comma-separated list of Reddit usernames.
 ignored_users =
 
+# Require at least that many seconds since an account's
+# last_commented date/time to allow posting a new comment.
+min_seconds_since_last_comment = 600
+# Require at least that many seconds since an account's
+# last_submission date/time to allow posting a new submission.
+min_seconds_since_last_submission = 600
+# Require at least that many seconds since an account's
+# last_vote date/time to allow voting on a submission / comment again.
+min_seconds_since_last_vote = 60
+# Require at least that much total karma (link karma + comment karma)
+# to allow an account to vote on a submission / comment.
+min_karma_to_vote = 2
+
 # The following settings shouldn't be changed unless using a
 # custom Reddit instance on a different domain.
 # See: https://praw.readthedocs.io/en/latest/getting_started/configuration/options.html

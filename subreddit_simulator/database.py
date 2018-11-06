@@ -1,8 +1,11 @@
 import json
+from logging import getLogger
 
 import attr
 from sqlalchemy import Text, TypeDecorator, create_engine
 from sqlalchemy.orm import sessionmaker
+
+logger = getLogger(__name__)
 
 
 class JSONSerialized(TypeDecorator):

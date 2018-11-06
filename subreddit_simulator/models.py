@@ -2,6 +2,7 @@ import html
 import random
 import sys
 from datetime import datetime
+from logging import getLogger
 
 import markovify
 import praw
@@ -19,6 +20,8 @@ MAX_OVERLAP_TOTAL = 20
 
 
 Base = declarative_base()
+
+logger = getLogger(__name__)
 
 
 class SubredditSimulatorText(markovify.Text):
@@ -79,6 +82,8 @@ class Account(Base):  # type: ignore
     comment_karma = Column(Integer, default=0)
     num_comments = Column(Integer, default=0)
     last_commented = Column(DateTime(timezone=True))
+    num_votes = Column(Integer, default=0)
+    last_voted = Column(DateTime(timezone=True))
     proxy_url = Column(String(255), default="")
 
     def __init__(
@@ -203,8 +208,13 @@ class Account(Base):  # type: ignore
         return self._session
 
     @property
-    def is_able_to_submit(self):
-        return self.can_submit
+    def can_vote(self):
+        min_karma = self.config.min_karma_to_vote
+        return self.can_submit and self.can_comment and self.total_karma >= min_karma
+
+    @property
+    def total_karma(self):
+        return (self.comment_karma or 0) + (self.link_karma or 0)
 
     @property
     def mean_comment_karma(self):
@@ -358,6 +368,13 @@ class Account(Base):  # type: ignore
         return valid_submissions
 
     def train_from_comments(self, get_new_comments=True):
+        echo(
+            "$FG_WHITE${DIM}Getting ${new}comments for training ",
+            max_length=-1,
+            new="new " if get_new_comments else " ",
+            file=self.output,
+        )
+
         if get_new_comments:
             self.get_comments_from_site()
 
